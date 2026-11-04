@@ -1,6 +1,6 @@
 const MESSAGES: Record<string, string> = {
   room_not_found: "Sala não encontrada. Confira o código.",
-  not_owner: "Só o dono da sala pode fazer isso.",
+  not_owner: "Só quem comanda a sala pode fazer isso.",
   player_not_found: "Você ainda não entrou nesta sala.",
   nickname_required: "Digite um apelido.",
   room_full: "A sala está cheia.",
@@ -14,6 +14,11 @@ const MESSAGES: Record<string, string> = {
   not_allowed: "Você não pode fazer isso.",
   bad_token: "Token inválido. Recarregue a página.",
   too_many_rooms: "Muitas salas abertas agora. Tente mais tarde.",
+  not_host: "Só a tela principal pode fazer isso.",
+  no_owner: "O celular do apresentador precisa estar conectado para começar.",
+  bad_claim: "Este QR de apresentador já foi usado ou expirou. Escaneie o QR que está na TV agora.",
+  round_not_found: "Rodada não encontrada.",
+  attempt_not_found: "Tentativa não encontrada.",
 };
 
 /** Converte erros "npl:codigo" das RPCs em mensagens legíveis. */

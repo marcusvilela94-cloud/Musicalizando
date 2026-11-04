@@ -1,7 +1,7 @@
 "use client";
 // Sem login: cada aparelho gera um token aleatório e guarda no localStorage.
 
-function randomToken() {
+export function randomToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");

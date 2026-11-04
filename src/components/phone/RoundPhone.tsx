@@ -5,17 +5,36 @@ import { useNow } from "@/hooks/useNow";
 import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
-import { currentAttempt, formatSeconds, lateTaps, ranking, roundDelta, teamById } from "@/lib/game";
+import {
+  attemptParts,
+  currentAttempt,
+  formatSeconds,
+  lateTaps,
+  lockLeftMs,
+  missingParts,
+  ranking,
+  recentDecision,
+  roundDelta,
+  teamById,
+} from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import type { PhoneCtx } from "./PhoneApp";
 
 const REASONS: Record<string, string> = {
-  locked: "Seu time está bloqueado até outro time errar.",
+  locked: "Seu time está bloqueado por alguns segundos.",
   paused: "Jogo pausado.",
   closed: "Essa música já fechou.",
   not_yet: "Você joga a partir da próxima música.",
   own_turn: "Seu time já está respondendo!",
   no_team: "Escolha um time primeiro.",
+};
+
+const vibrate = (p: number | number[]) => {
+  try {
+    navigator.vibrate?.(p);
+  } catch {
+    /* sem suporte: ignora */
+  }
 };
 
 export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round | null }) {
@@ -26,6 +45,18 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
     return () => clearTimeout(t);
   }, [feedback]);
 
+  const attempt = currentAttempt(state, round);
+  // vibra o celular do time que ganhou a vez
+  const myTurnId = attempt && attempt.status === "open" && attempt.team_id === ctx.team?.id ? attempt.id : null;
+  const vibrated = useRef<string | null>(null);
+  useEffect(() => {
+    if (!myTurnId || vibrated.current === myTurnId) return;
+    vibrated.current = myTurnId;
+    vibrate([120, 60, 120]);
+  }, [myTurnId]);
+
+  const now = useNow(ctx.serverNow, 250);
+
   if (!round || round.status === "loading") {
     return (
       <>
@@ -35,23 +66,26 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
     );
   }
   const team = ctx.team!;
-  const attempt = currentAttempt(state, round);
   const notYet = ctx.me.active_from_round > round.round_no;
+  const spoken = state.room.settings.roomStyle === "host" && state.room.settings.answerMode === "spoken";
+  const mine = recentDecision(state, round, now);
+  const myDecision = mine && mine.team_id === team.id ? mine : undefined;
 
   let body: React.ReactNode = null;
   if (round.status === "playing") {
     if (notYet) body = <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>;
-    else body = <BuzzButton state={state} ctx={ctx} round={round} onFeedback={setFeedback} />;
+    else body = <BuzzButton state={state} ctx={ctx} round={round} now={now} onFeedback={setFeedback} />;
   } else if (round.status === "answering" && attempt) {
-    body = attempt.team_id === team.id ? <AnswerForm state={state} ctx={ctx} attempt={attempt} /> : <OtherAnswering state={state} ctx={ctx} attempt={attempt} />;
+    if (attempt.team_id !== team.id) body = <OtherAnswering state={state} ctx={ctx} attempt={attempt} now={now} spoken={spoken} />;
+    else if (spoken) body = <SpeakNow state={state} ctx={ctx} attempt={attempt} now={now} />;
+    else body = <AnswerForm key={attempt.id} state={state} ctx={ctx} round={round} attempt={attempt} now={now} />;
   } else if (round.status === "doubt" && attempt) {
     const t = teamById(state, attempt.team_id);
     body = (
       <>
         <p className="font-display text-4xl">🤔</p>
         <p className="font-display text-3xl">Valeu ou não valeu?</p>
-        <p className="text-white/70 text-lg">O dono está decidindo a resposta {attempt.team_id === team.id ? "do seu time" : `de ${t?.name}`}.</p>
-        <p className="text-xl">“{[attempt.answer_artist, attempt.answer_title].filter(Boolean).join(" · ")}”</p>
+        <p className="text-white/70 text-lg">O apresentador está decidindo a resposta {attempt.team_id === team.id ? "do seu time" : `de ${t?.name}`}.</p>
       </>
     );
   } else if (round.status === "revealed") {
@@ -63,23 +97,47 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
   return (
     <>
       {body}
+      {myDecision && round.status === "playing" && <DecisionToast attempt={myDecision} />}
       {feedback && <p className="npl-pop absolute bottom-6 left-4 right-4 rounded-2xl bg-black/80 px-4 py-3 text-lg">{feedback}</p>}
     </>
   );
 }
 
-function BuzzButton({ state, ctx, round, onFeedback }: { state: RoomState; ctx: PhoneCtx; round: Round; onFeedback: (m: string) => void }) {
+function DecisionToast({ attempt }: { attempt: Attempt }) {
+  const ok = attempt.status === "correct";
+  return (
+    <div className={`npl-pop absolute left-4 right-4 top-4 rounded-2xl px-4 py-3 font-display text-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
+      {ok ? `✓ Acertaram ${attemptParts(attempt)}!` : attempt.status === "timeout" ? "⏱ Tempo esgotado" : "✗ Errou!"}{" "}
+      {attempt.points ? (attempt.points > 0 ? `+${attempt.points}` : attempt.points) : ""}
+    </div>
+  );
+}
+
+function FoundLine({ state, round }: { state: RoomState; round: Round }) {
+  const f = round.found ?? {};
+  if (!f.artist && !f.title) return null;
+  const need = missingParts(state, round);
+  return (
+    <p className="rounded-xl bg-emerald-500/20 px-3 py-2 text-lg">
+      {f.artist && <>Artista: <b>{f.artist}</b> ✓ </>}
+      {f.title && <>Música: <b>{f.title}</b> ✓ </>}— falta {need.title ? "a música" : "o artista"}
+    </p>
+  );
+}
+
+function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; ctx: PhoneCtx; round: Round; now: number; onFeedback: (m: string) => void }) {
   const team = ctx.team!;
   const busy = useRef(false);
   const [pressed, setPressed] = useState(false);
-  const locked = round.locked_team_id === team.id;
+  const lockMs = lockLeftMs(round, team.id, now);
+  const locked = lockMs > 0;
   const bg = locked ? "#64748b" : team.color;
 
   const press = async () => {
     if (busy.current || locked) return;
     busy.current = true;
     setPressed(true);
-    navigator.vibrate?.(60);
+    vibrate(40);
     try {
       const r = await api.buzz(ctx.code, ctx.token, round.id);
       if (!r.ok) {
@@ -98,28 +156,36 @@ function BuzzButton({ state, ctx, round, onFeedback }: { state: RoomState; ctx: 
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
+      <FoundLine state={state} round={round} />
       <button
         onPointerDown={(e) => {
           e.preventDefault();
           press();
         }}
         disabled={locked}
-        className={`aspect-square w-[min(80vw,55vh)] rounded-full font-display text-6xl font-bold shadow-[0_14px_0_rgba(0,0,0,0.35)] transition active:translate-y-3 active:shadow-[0_2px_0_rgba(0,0,0,0.35)] ${
-          locked ? "" : "npl-pulse"
+        className={`aspect-square w-[min(80vw,55vh)] rounded-full font-display font-bold shadow-[0_14px_0_rgba(0,0,0,0.35)] transition active:translate-y-3 active:shadow-[0_2px_0_rgba(0,0,0,0.35)] ${
+          locked ? "text-4xl" : "npl-pulse text-6xl"
         } ${pressed ? "translate-y-3 shadow-[0_2px_0_rgba(0,0,0,0.35)]" : ""}`}
         style={{ background: bg, color: textOn(bg) }}
       >
-        {locked ? "🔒" : "EU SEI!"}
+        {locked ? (
+          <>
+            🔒
+            <br />
+            <span className="tabular-nums">Liberado em {Math.ceil(lockMs / 1000)}s</span>
+          </>
+        ) : (
+          "EU SEI!"
+        )}
       </button>
       <p className="font-display text-xl text-white/80">
-        {locked ? "Bloqueado: espere outro time errar" : round.had_error ? "Roubo vale metade!" : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
+        {locked ? "Seu time errou — espere a contagem" : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
       </p>
     </div>
   );
 }
 
-function useCountdown(ctx: PhoneCtx, attempt: Attempt, paused: boolean) {
-  const now = useNow(ctx.serverNow, 200, !!attempt.deadline);
+function useCountdown(ctx: PhoneCtx, attempt: Attempt, paused: boolean, now: number) {
   const left = attempt.deadline ? Math.max(0, Date.parse(attempt.deadline) - now) : null;
   // tempo acabou: pede ao servidor para conferir (o relógio que vale é o do servidor)
   const deadline = attempt.deadline;
@@ -132,25 +198,59 @@ function useCountdown(ctx: PhoneCtx, attempt: Attempt, paused: boolean) {
   return left;
 }
 
-function AnswerForm({ state, ctx, attempt }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt }) {
+function TurnHeader({ ctx, attempt, left, text }: { ctx: PhoneCtx; attempt: Attempt; left: number | null; text: string }) {
+  const team = ctx.team!;
+  return (
+    <div className="flex w-full items-center justify-between rounded-2xl px-4 py-2" style={{ background: team.color, color: textOn(team.color) }}>
+      <span className="font-display text-lg text-left">
+        {attempt.player_id === ctx.me.id ? "Você apertou!" : "Seu time apertou!"}
+        <br />
+        {text}
+      </span>
+      <span className="font-display text-5xl font-bold tabular-nums">{left !== null ? Math.ceil(left / 1000) : "∞"}</span>
+    </div>
+  );
+}
+
+/** Resposta falada: sem campo de texto. */
+function SpeakNow({ state, ctx, attempt, now }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt; now: number }) {
+  const left = useCountdown(ctx, attempt, state.room.paused, now);
+  const team = ctx.team!;
+  return (
+    <div className="npl-pop flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: team.color, color: textOn(team.color) }}>
+      <p className="font-display text-5xl">🗣️</p>
+      <p className="font-display text-4xl font-bold">Falem a resposta em voz alta!</p>
+      {left !== null ? (
+        <p className={`font-display text-8xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</p>
+      ) : (
+        <p className="font-display text-xl opacity-80">sem limite de tempo</p>
+      )}
+    </div>
+  );
+}
+
+/** Resposta digitada (só as partes que faltam). No "Todos jogam", a zona de dúvida vira "Quase!". */
+function AnswerForm({ state, ctx, round, attempt, now }: { state: RoomState; ctx: PhoneCtx; round: Round; attempt: Attempt; now: number }) {
   const [artist, setArtist] = useState("");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const left = useCountdown(ctx, attempt, state.room.paused);
-  const both = state.room.settings.scoring === "artist_title";
-  const who = state.players.find((p) => p.id === attempt.player_id);
-  const team = ctx.team!;
+  const [almost, setAlmost] = useState<{ artist?: string; title?: string } | null>(null);
+  const left = useCountdown(ctx, attempt, state.room.paused, now);
+  const need = missingParts(state, round);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api.submitAnswer(ctx.code, ctx.token, attempt.id, both ? artist : "", title);
+      const r = await api.submitAnswer(ctx.code, ctx.token, attempt.id, need.artist ? artist : "", need.title ? title : "");
       if (!r.ok) {
         setMsg(r.reason === "empty" ? "Preencha pelo menos um campo." : r.reason === "timeout" ? "O tempo acabou!" : "Um colega já respondeu.");
-      }
+      } else if (r.result === "almost") {
+        setAlmost({ artist: r.artist, title: r.title });
+        vibrate([60, 40, 60]);
+      } else setAlmost(null);
     } catch (err) {
       setMsg(friendlyError(err));
     } finally {
@@ -158,52 +258,56 @@ function AnswerForm({ state, ctx, attempt }: { state: RoomState; ctx: PhoneCtx; 
     }
   };
 
+  const field = (doubt: boolean) =>
+    `rounded-2xl bg-white px-4 py-4 font-display text-2xl text-violet-950 outline-none focus:ring-4 ${doubt ? "ring-4 ring-amber-400" : "ring-yellow-300"}`;
+
   return (
     <form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-3">
-      <div className="flex items-center justify-between rounded-2xl px-4 py-2" style={{ background: team.color, color: textOn(team.color) }}>
-        <span className="font-display text-lg text-left">
-          {who?.id === ctx.me.id ? "Você apertou!" : `${who?.nickname ?? "Seu time"} apertou!`}
-          <br />
-          Conversem e respondam
-        </span>
-        <span className="font-display text-5xl font-bold tabular-nums">{left !== null ? Math.ceil(left / 1000) : "∞"}</span>
-      </div>
-      {both && (
+      <TurnHeader ctx={ctx} attempt={attempt} left={left} text="Conversem e respondam" />
+      <FoundLine state={state} round={round} />
+      {almost && (
+        <p className="npl-pop rounded-2xl bg-amber-400 px-4 py-3 font-display text-xl text-violet-950">
+          Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.
+        </p>
+      )}
+      {need.artist && (
         <input
           value={artist}
           onChange={(e) => setArtist(e.target.value)}
           placeholder="Artista"
           autoComplete="off"
           autoCapitalize="words"
-          className="rounded-2xl bg-white px-4 py-4 font-display text-2xl text-violet-950 outline-none focus:ring-4 ring-yellow-300"
+          className={field(almost?.artist === "doubt")}
         />
       )}
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Música"
-        autoComplete="off"
-        autoFocus={!both}
-        className="rounded-2xl bg-white px-4 py-4 font-display text-2xl text-violet-950 outline-none focus:ring-4 ring-yellow-300"
-      />
-      {both && <p className="text-sm text-white/60">Basta um. Acertar o título vale +50%.</p>}
+      {need.title && (
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Música"
+          autoComplete="off"
+          autoFocus={!need.artist}
+          className={field(almost?.title === "doubt")}
+        />
+      )}
+      {need.artist && need.title && <p className="text-sm text-white/60">Basta um. Artista vale 50%, música 100%, os dois 150%.</p>}
       <Button type="submit" disabled={busy || (!artist.trim() && !title.trim())} className="text-2xl py-4">
-        {busy ? "Enviando…" : "Responder"}
+        {busy ? "Enviando…" : almost ? "Reenviar" : "Responder"}
       </Button>
       {msg && <p className="text-rose-300">{msg}</p>}
     </form>
   );
 }
 
-function OtherAnswering({ state, ctx, attempt }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt }) {
+function OtherAnswering({ state, ctx, attempt, now, spoken }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt; now: number; spoken: boolean }) {
   const t = teamById(state, attempt.team_id);
-  const left = useCountdown(ctx, attempt, state.room.paused);
+  const left = useCountdown(ctx, attempt, state.room.paused, now);
   const mine = lateTaps(state, attempt).find((l) => l.team?.id === ctx.team?.id);
   if (!t) return null;
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: t.color, color: textOn(t.color) }}>
       <p className="font-display text-4xl font-bold">{t.name}</p>
-      <p className="font-display text-2xl">está respondendo…</p>
+      <p className="font-display text-2xl">{spoken ? "está respondendo…" : "está digitando…"}</p>
       {left !== null && <p className="font-display text-6xl font-bold tabular-nums">{Math.ceil(left / 1000)}</p>}
       {mine && <p className="text-lg opacity-90">Seu time apertou {formatSeconds(mine.ms)}s depois 😬</p>}
     </div>
@@ -212,10 +316,10 @@ function OtherAnswering({ state, ctx, attempt }: { state: RoomState; ctx: PhoneC
 
 function RevealPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round }) {
   const team = ctx.team!;
-  const winner = teamById(state, round.winner_team_id);
   const myAttempts = state.attempts.filter((a) => a.round_id === round.id && a.team_id === team.id && a.kind === "turn");
-  const won = round.winner_team_id === team.id;
+  const won = round.artist_team_id === team.id || round.title_team_id === team.id;
   const erred = myAttempts.some((a) => a.status === "wrong" || a.status === "timeout");
+  const winner = teamById(state, round.title_team_id ?? round.artist_team_id);
   const delta = roundDelta(state, round).get(team.id) ?? 0;
   return (
     <>

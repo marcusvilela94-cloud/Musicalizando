@@ -1,65 +1,78 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { api } from "@/lib/api";
 import type { PlayHandle } from "@/lib/audio";
 import type { TvEngineProps } from "../types";
 import { CLASSIC_STAGES } from "./stages";
 
-const GAP_MS = 1500; // pausa curta entre os trechos
+/** Um comando "Tocar" mais velho que isso não toca de novo (ex.: a TV recarregou). */
+const STALE_PLAY_MS = 4000;
 
 /**
- * Toca o trecho do estágio atual (sempre do início da prévia) e, ao fim do
- * trecho + pausa, pede ao servidor o próximo estágio. Se alguém aperta o
- * botão, o som para; se o time erra, continua exatamente de onde parou.
+ * Nada avança sozinho: cada "Tocar" / "Repetir" / "Próximo trecho" do celular
+ * do dono incrementa round.play_seq e a TV toca o trecho do estágio atual,
+ * começando no ponto sorteado para aquele estágio (round.offsets). O último
+ * estágio toca a prévia inteira. Se alguém aperta EU SEI! ou o dono pausa, o
+ * som para e só volta quando o dono mandar tocar de novo.
  */
-export function ClassicTvEngine({ code, owner, round, paused, attemptCount, buffer, audio }: TvEngineProps) {
-  const pos = useRef({ roundId: "", stage: 0, offset: 0 });
+export function ClassicTvEngine({ round, paused, buffer, audio, serverNow, onPlayingChange }: TvEngineProps) {
+  const handled = useRef<{ roundId: string; seq: number } | null>(null);
+  const current = useRef<PlayHandle | null>(null);
+  const onPlayingRef = useRef(onPlayingChange);
+  useEffect(() => {
+    onPlayingRef.current = onPlayingChange;
+  }, [onPlayingChange]);
+
+  const open = round.status === "playing" && !paused;
+
+  // rodada fechou (alguém apertou), pausou ou trocou de música: silêncio
+  useEffect(() => {
+    if (open) return;
+    current.current?.stop();
+    current.current = null;
+    onPlayingRef.current(false);
+  }, [open, round.id]);
 
   useEffect(() => {
-    if (!buffer || round.status !== "playing" || paused || !audio.unlocked) return;
-    const st = pos.current;
-    if (st.roundId !== round.id || st.stage !== round.stage) {
-      st.roundId = round.id;
-      st.stage = round.stage;
-      st.offset = 0;
+    if (!buffer) return;
+    if (!handled.current || handled.current.roundId !== round.id) {
+      // primeira vez que vemos esta rodada: só toca se o comando acabou de chegar
+      const fresh = !!round.play_at && serverNow() - Date.parse(round.play_at) < STALE_PLAY_MS;
+      handled.current = { roundId: round.id, seq: fresh ? round.play_seq - 1 : round.play_seq };
     }
-    const stage = CLASSIC_STAGES[Math.max(0, Math.min(CLASSIC_STAGES.length - 1, round.stage - 1))];
-    const dur = Math.min(stage.seconds, buffer.duration);
-    let handle: PlayHandle | null = null;
-    let gapTimer: ReturnType<typeof setTimeout> | undefined;
-    let cancelled = false;
+    if (round.play_seq <= handled.current.seq || round.played_stage < 1) return;
+    handled.current.seq = round.play_seq;
+    if (!open) return;
 
-    const advance = async (tries = 3) => {
-      try {
-        await api.advanceStage(code, owner, round.id, round.stage);
-      } catch {
-        if (!cancelled && tries > 1) gapTimer = setTimeout(() => advance(tries - 1), 1000);
-      }
-    };
-    const startGap = () => {
-      gapTimer = setTimeout(() => !cancelled && advance(), GAP_MS);
-    };
+    const idx = Math.min(CLASSIC_STAGES.length - 1, round.played_stage - 1);
+    const isLast = idx === CLASSIC_STAGES.length - 1;
+    const len = isLast ? buffer.duration : Math.min(CLASSIC_STAGES[idx].seconds, buffer.duration);
+    const offset = isLast ? 0 : Math.max(0, Math.min(round.offsets[idx] ?? 0, buffer.duration - len));
 
-    if (st.offset < dur - 0.02) {
-      const from = st.offset;
-      handle = audio.play(buffer, from, dur - from, () => {
-        st.offset = dur;
-        handle = null;
-        if (!cancelled) startGap();
-      });
-      const h = handle;
-      return () => {
-        cancelled = true;
-        clearTimeout(gapTimer);
-        if (handle === h) st.offset = Math.min(dur, from + h.stop());
-      };
-    }
-    startGap();
-    return () => {
-      cancelled = true;
-      clearTimeout(gapTimer);
-    };
-  }, [buffer, round.id, round.stage, round.status, paused, attemptCount, code, owner, audio]);
+    current.current?.stop();
+    onPlayingRef.current(true);
+    const handle: PlayHandle = audio.play(
+      buffer,
+      offset,
+      len,
+      () => {
+        if (current.current === handle) {
+          current.current = null;
+          onPlayingRef.current(false);
+        }
+      },
+      isLast ? 1.5 : 0,
+    );
+    current.current = handle;
+  }, [buffer, round.id, round.play_seq, round.played_stage, round.play_at, round.offsets, open, audio, serverNow]);
+
+  // saiu da tela: para o som
+  useEffect(
+    () => () => {
+      current.current?.stop();
+      current.current = null;
+    },
+    [],
+  );
 
   return null;
 }

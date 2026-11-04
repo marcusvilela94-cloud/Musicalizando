@@ -51,12 +51,27 @@ export const api = {
   // partida
   startMatch: (code: string, owner: string, tracks: PickedTrack[]) =>
     call<{ match_no: number; total_rounds: number }>("npl_start_match", { p_code: code, p_owner_token: owner, p_tracks: tracks }),
-  roundBegin: (code: string, owner: string, roundId: string, artists: string[]) =>
-    call<unknown>("npl_round_begin", { p_code: code, p_owner_token: owner, p_round_id: roundId, p_artists: artists }),
-  advanceStage: (code: string, owner: string, roundId: string, fromStage: number) =>
-    call<{ ok: boolean }>("npl_advance_stage", { p_code: code, p_owner_token: owner, p_round_id: roundId, p_from_stage: fromStage }),
+  roundBegin: (code: string, host: string, roundId: string, artists: string[], offsets: number[]) =>
+    call<unknown>("npl_round_begin", {
+      p_code: code,
+      p_owner_token: host,
+      p_round_id: roundId,
+      p_artists: artists,
+      p_offsets: offsets,
+    }),
+  /** Tocar/Repetir (advance=false) ou Próximo trecho (advance=true). */
+  play: (code: string, owner: string, roundId: string, stage: number, advance: boolean) =>
+    call<{ ok: boolean }>("npl_play", {
+      p_code: code,
+      p_owner_token: owner,
+      p_round_id: roundId,
+      p_stage: stage,
+      p_advance: advance,
+    }),
   skipRound: (code: string, owner: string, roundId: string) =>
     call<void>("npl_skip_round", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
+  endRound: (code: string, owner: string, roundId: string) =>
+    call<void>("npl_end_round", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   showScoreboard: (code: string, owner: string, roundId: string) =>
     call<void>("npl_show_scoreboard", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   nextRound: (code: string, owner: string, fromRound: number) =>
@@ -66,25 +81,53 @@ export const api = {
     call<void>("npl_pause", { p_code: code, p_owner_token: owner, p_paused: paused }),
   judge: (code: string, owner: string, attemptId: string, accept: boolean) =>
     call<string>("npl_judge", { p_code: code, p_owner_token: owner, p_attempt_id: attemptId, p_accept: accept }),
-  override: (code: string, owner: string, attemptId: string, correct: boolean) =>
-    call<void>("npl_override", { p_code: code, p_owner_token: owner, p_attempt_id: attemptId, p_correct: correct }),
+  /** Resposta falada: o dono marca "Artista certo" / "Música certa" (os dois falsos = "Errou"). */
+  decide: (code: string, owner: string, attemptId: string, artist: boolean, title: boolean) =>
+    call<string | null>("npl_decide", {
+      p_code: code,
+      p_owner_token: owner,
+      p_attempt_id: attemptId,
+      p_artist: artist,
+      p_title: title,
+    }),
+  /** Inverter decisão: define quais partes a tentativa acertou. */
+  overrideParts: (code: string, owner: string, attemptId: string, artist: boolean, title: boolean) =>
+    call<void>("npl_override_parts", {
+      p_code: code,
+      p_owner_token: owner,
+      p_attempt_id: attemptId,
+      p_artist: artist,
+      p_title: title,
+    }),
   adjustScore: (code: string, owner: string, teamId: string, delta: number) =>
     call<void>("npl_adjust_score", { p_code: code, p_owner_token: owner, p_team_id: teamId, p_delta: delta }),
   endTurn: (code: string, owner: string, attemptId: string) =>
     call<void>("npl_end_turn", { p_code: code, p_owner_token: owner, p_attempt_id: attemptId }),
   tick: (code: string) => call<boolean>("npl_tick", { p_code: code }),
   hostAnswer: (code: string, owner: string) =>
-    call<{ title: string; artist: string; artists: string[] } | null>("npl_host_answer", { p_code: code, p_owner_token: owner }, false),
+    call<{ round_id: string; title: string; artist: string; artists: string[] } | null>(
+      "npl_host_answer",
+      { p_code: code, p_owner_token: owner },
+      false,
+    ),
+
+  // celular do dono
+  openClaim: (code: string, host: string, claim: string) =>
+    call<void>("npl_open_claim", { p_code: code, p_host_token: host, p_claim: claim }, false),
+  claimOwner: (code: string, claim: string, token: string) =>
+    call<{ ok: boolean }>("npl_claim_owner", { p_code: code, p_claim: claim, p_token: token }),
+  ownerAway: (code: string, host: string, away: boolean) =>
+    call<void>("npl_owner_away", { p_code: code, p_host_token: host, p_away: away }),
 
   // botão e resposta
   buzz: (code: string, token: string, roundId: string) =>
-    call<{ ok: boolean; reason?: string; attempt_id?: string; team_id?: string; behind_ms?: number }>("npl_buzz", {
+    call<{ ok: boolean; reason?: string; attempt_id?: string; team_id?: string; behind_ms?: number; until?: string }>("npl_buzz", {
       p_code: code,
       p_token: token,
       p_round_id: roundId,
     }),
   submitAnswer: (code: string, token: string, attemptId: string, artist: string, title: string) =>
-    call<{ ok: boolean; reason?: string; result?: string; points?: number }>("npl_submit_answer", {
+    call<{ ok: boolean; reason?: string; result?: string; points?: number; artist?: string; title?: string }>("npl_submit_answer", {
       p_code: code,
       p_token: token,
       p_attempt_id: attemptId,

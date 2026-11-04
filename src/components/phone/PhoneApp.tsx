@@ -9,47 +9,72 @@ import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { currentRound, ranking, roundDelta, teamById } from "@/lib/game";
-import { getOwnerToken, getPlayerToken, getSavedNickname, saveNickname, saveOwnerToken } from "@/lib/tokens";
+import { getPlayerToken, getSavedNickname, saveNickname } from "@/lib/tokens";
 import type { Player, RoomState, Team } from "@/lib/types";
-import { OwnerBar } from "./OwnerBar";
+import { PresenterApp } from "./PresenterApp";
 import { RoundPhone } from "./RoundPhone";
 
-export type PhoneCtx = { code: string; token: string; me: Player; team?: Team; owner: string | null; serverNow: () => number };
+export type PhoneCtx = { code: string; token: string; me: Player; team?: Team; serverNow: () => number };
 
+type Role = "loading" | "presenter" | "player" | { error: string };
+
+/**
+ * Celular. Quem escaneou o QR "Sou o apresentador" (#dono=...) — ou é o
+ * mesmo aparelho que já era o apresentador — vê os controles; os demais jogam.
+ */
 export function PhoneApp() {
   const { code } = useParams<{ code: string }>();
   const [token, setToken] = useState<string | null>(null);
-  const [owner, setOwner] = useState<string | null>(null);
-  const [meId, setMeId] = useState<string | null>(null);
-  const [needsName, setNeedsName] = useState(false);
-  const [joinError, setJoinError] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>("loading");
 
-  // token do aparelho + (opcional) chave de dono vinda do QR "#dono=..."
   useEffect(() => {
     const t = getPlayerToken();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage só existe no navegador
     setToken(t);
     const m = window.location.hash.match(/dono=([a-f0-9]+)/);
-    if (m) {
-      history.replaceState(null, "", window.location.pathname);
-      api.isOwner(code, m[1]).then((ok) => {
-        if (ok) {
-          saveOwnerToken(code, m[1]);
-          setOwner(m[1]);
+    if (m) history.replaceState(null, "", window.location.pathname);
+    (async () => {
+      try {
+        if (m) {
+          await api.claimOwner(code, m[1], t);
+          setRole("presenter");
+          return;
         }
-      });
-    } else {
-      setOwner(getOwnerToken(code));
-    }
-    // reconexão: se este aparelho já está na sala, volta para o mesmo time e pontos
+        setRole((await api.isOwner(code, t)) ? "presenter" : "player");
+      } catch (e) {
+        setRole({ error: friendlyError(e) });
+      }
+    })();
+  }, [code]);
+
+  if (!token || role === "loading") return <Screen><Spinner /></Screen>;
+  if (typeof role === "object") {
+    return (
+      <Screen>
+        <p className="text-rose-300 text-xl">{role.error}</p>
+        <Button variant="secondary" onClick={() => setRole("player")}>Entrar como jogador</Button>
+      </Screen>
+    );
+  }
+  if (role === "presenter") return <PresenterApp code={code} token={token} />;
+  return <PlayerApp code={code} token={token} />;
+}
+
+function PlayerApp({ code, token }: { code: string; token: string }) {
+  const [meId, setMeId] = useState<string | null>(null);
+  const [needsName, setNeedsName] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  // reconexão: se este aparelho já está na sala, volta para o mesmo time e pontos
+  useEffect(() => {
     api
-      .join(code, t, "")
+      .join(code, token, "")
       .then((p) => setMeId(p.id))
       .catch((e) => {
         if (/nickname_required/.test(String(e))) setNeedsName(true);
         else setJoinError(friendlyError(e));
       });
-  }, [code]);
+  }, [code, token]);
 
   const { state, notFound, connected, serverNow } = useRoom(code, meId ? { kind: "player", playerId: meId } : undefined);
   useWakeLock(state?.room.phase === "playing");
@@ -62,7 +87,6 @@ export function PhoneApp() {
       </Screen>
     );
   }
-  if (!token) return <Screen><Spinner /></Screen>;
   if (needsName && !meId) {
     return <NameForm code={code} token={token} onJoined={(id) => { setMeId(id); setNeedsName(false); }} />;
   }
@@ -71,11 +95,11 @@ export function PhoneApp() {
 
   const me = state.players.find((p) => p.id === meId);
   if (!me) {
-    // o dono removeu este jogador
+    // removido da sala
     return <NameForm code={code} token={token} onJoined={setMeId} removed />;
   }
   const team = teamById(state, me.team_id);
-  const ctx: PhoneCtx = { code, token, me, team, owner, serverNow };
+  const ctx: PhoneCtx = { code, token, me, team, serverNow };
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden no-select">
@@ -93,7 +117,6 @@ export function PhoneApp() {
           </div>
         )}
       </main>
-      {owner && <OwnerBar state={state} code={code} owner={owner} />}
     </div>
   );
 }
@@ -104,8 +127,8 @@ function PhoneBody({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
     return (
       <>
         <Logo className="text-3xl" />
-        <p className="font-display text-3xl">Aguardando o dono da sala ⏳</p>
-        <p className="text-white/70">Ele está escolhendo as músicas.</p>
+        <p className="font-display text-3xl">Aguardando a configuração ⏳</p>
+        <p className="text-white/70">As músicas e regras estão sendo escolhidas.</p>
       </>
     );
   }
@@ -224,7 +247,7 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
             </p>
           </div>
           <Button variant="secondary" onClick={() => { setName(ctx.team!.name); setEditing(true); }}>✏️ Editar nome do time</Button>
-          <p className="text-white/60">Esperando o dono começar…</p>
+          <p className="text-white/60">Esperando a partida começar…</p>
         </>
       )}
       {error && <p className="text-rose-300">{error}</p>}
@@ -255,7 +278,7 @@ function FinalPhone({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
       >
         {ctx.me.wants_rematch ? "✓ Quero jogar de novo!" : "🔁 Jogar de novo"}
       </Button>
-      <p className="text-white/60">O dono começa a revanche na tela principal.</p>
+      <p className="text-white/60">A revanche começa pela TV (ou pelo apresentador).</p>
     </>
   );
 }

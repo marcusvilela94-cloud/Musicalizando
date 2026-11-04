@@ -1,4 +1,45 @@
+import { getMode } from "@/modes";
 import type { Attempt, RoomState, Round, Team } from "./types";
+
+/** Partes que ainda faltam descobrir nesta rodada. */
+export function missingParts(s: RoomState, r: Round) {
+  const artist = s.room.settings.scoring === "artist_title" && !r.found?.artist;
+  const title = !r.found?.title;
+  return { artist, title };
+}
+
+/** Pontos do estágio atual (= valor da música). Artista vale metade. */
+export const stagePoints = (r: Round) => getMode(r.mode).stages[Math.max(0, r.stage - 1)]?.points ?? 0;
+export const artistPoints = (pts: number) => Math.round(pts * 0.5);
+
+/** "artista", "música", "artista e música" ou "" (o que a tentativa acertou). */
+export function attemptParts(a: Attempt) {
+  const parts = [a.artist_result === "ok" && "artista", a.title_result === "ok" && "música"].filter(Boolean);
+  return parts.join(" e ");
+}
+
+/** Milissegundos até o time ser liberado do bloqueio (0 = pode apertar). Relógio do servidor. */
+export function lockLeftMs(r: Round | null, teamId: string | null | undefined, now: number) {
+  const until = r && teamId ? r.locks?.[teamId] : undefined;
+  return until ? Math.max(0, Date.parse(until) - now) : 0;
+}
+
+/** Times bloqueados agora, com o tempo restante. */
+export function lockedTeams(s: RoomState, r: Round | null, now: number) {
+  return s.teams.map((t) => ({ team: t, ms: lockLeftMs(r, t.id, now) })).filter((x) => x.ms > 0);
+}
+
+export const isHostStyle = (s: RoomState) => s.room.settings.roomStyle === "host";
+
+/** Última decisão (acerto/erro) desta rodada, se aconteceu há pouco — para animações. */
+export function recentDecision(s: RoomState, r: Round | null, now: number, withinMs = 3500) {
+  if (!r) return undefined;
+  const decided = s.attempts
+    .filter((a) => a.round_id === r.id && a.kind === "turn" && a.decided_at && ["correct", "wrong", "timeout"].includes(a.status))
+    .sort((a, b) => Date.parse(b.decided_at!) - Date.parse(a.decided_at!))[0];
+  if (!decided || now - Date.parse(decided.decided_at!) > withinMs) return undefined;
+  return decided;
+}
 
 export const currentRound = (s: RoomState): Round | null =>
   s.rounds.find((r) => r.round_no === s.room.round_no) ?? null;

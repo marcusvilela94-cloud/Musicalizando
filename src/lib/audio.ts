@@ -109,3 +109,13 @@ export class AudioManager {
     for (const e of [...this.active]) e.halt();
   }
 }
+
+/**
+ * Uma instância por aba: o clique em "Criar sala" já libera o som e a
+ * navegação para /tv/<código> reaproveita o mesmo AudioContext.
+ */
+let shared: AudioManager | null = null;
+export function sharedAudio() {
+  if (!shared) shared = new AudioManager();
+  return shared;
+}

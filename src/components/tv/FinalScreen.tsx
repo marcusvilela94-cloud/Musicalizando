@@ -1,34 +1,29 @@
 "use client";
-import { useState } from "react";
-import { Button, Logo, TeamChip } from "@/components/ui";
-import { api } from "@/lib/api";
+import { useEffect } from "react";
+import { FinalControls } from "@/components/control/FinalControls";
+import { Logo, TeamChip } from "@/components/ui";
 import { textOn } from "@/lib/colors";
-import { friendlyError } from "@/lib/errors";
-import { formatSeconds, matchStats, ranking } from "@/lib/game";
+import { formatSeconds, isHostStyle, matchStats, ranking } from "@/lib/game";
+import { sharedSfx } from "@/lib/sfx";
 import type { RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
-import { startMatch } from "./startMatch";
 import type { TvCtx } from "./TvApp";
 
 export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const rank = ranking(state.teams);
   const podium = rank.slice(0, 3);
   const stats = matchStats(state);
   const votes = state.players.filter((p) => p.wants_rematch).length;
+  const sounds = state.room.settings.sounds !== false;
+  const matchNo = state.room.match_no;
 
-  const rematch = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await startMatch(state, ctx);
-    } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  // fanfarra no pódio (uma vez por partida)
+  useEffect(() => {
+    const sfx = sharedSfx();
+    sfx.setEnabled(sounds);
+    ctx.audio.stopAll();
+    sfx.play("fanfare");
+  }, [matchNo, sounds, ctx.audio]);
 
   // pódio: 2º, 1º, 3º
   const order = [podium[1], podium[0], podium[2]].filter(Boolean);
@@ -103,19 +98,14 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
         </Stat>
       </div>
 
-      {error && <p className="text-rose-300 text-lg">{error}</p>}
-      <div className="flex flex-wrap justify-center gap-4">
-        <Button className="text-3xl px-10 py-5" disabled={busy} onClick={rematch}>
-          {busy ? "Sorteando…" : "🔁 Revanche (mesmos times)"}
-        </Button>
-        <Button variant="secondary" className="text-xl" onClick={() => api.setPhase(ctx.code, ctx.owner, "lobby").catch((e) => setError(friendlyError(e)))}>
-          Mudar times
-        </Button>
-        <Button variant="secondary" className="text-xl" onClick={() => api.setPhase(ctx.code, ctx.owner, "config").catch((e) => setError(friendlyError(e)))}>
-          ⚙️ Configurações
-        </Button>
-      </div>
-      {votes > 0 && <p className="text-white/70 text-xl">{votes} jogador{votes > 1 ? "es querem" : " quer"} jogar de novo!</p>}
+      {isHostStyle(state) ? (
+        <>
+          <p className="font-display text-2xl text-white/70">O apresentador pode começar a revanche pelo celular.</p>
+          {votes > 0 && <p className="text-white/70 text-xl">{votes} jogador{votes > 1 ? "es querem" : " quer"} jogar de novo!</p>}
+        </>
+      ) : (
+        <FinalControls state={state} code={ctx.code} token={ctx.host} />
+      )}
     </main>
   );
 }

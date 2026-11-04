@@ -5,31 +5,34 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Logo, Spinner } from "@/components/ui";
 import { useRoom } from "@/hooks/useRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { AudioManager } from "@/lib/audio";
+import { api } from "@/lib/api";
+import { type AudioManager, sharedAudio } from "@/lib/audio";
 import { getOwnerToken } from "@/lib/tokens";
 import { ConfigScreen } from "./ConfigScreen";
 import { FinalScreen } from "./FinalScreen";
 import { GameScreen } from "./GameScreen";
+import { OwnerAwayPanel, OwnerClaimScreen } from "./JoinPanel";
 import { LobbyScreen } from "./LobbyScreen";
 
+/** "Todos jogam": a TV exibe e comanda. "Com apresentador": a TV só exibe. */
 export type TvCtx = {
   code: string;
-  owner: string;
+  /** token da tela (quem criou a sala): busca a música e abre as rodadas */
+  host: string;
   audio: AudioManager;
-  unlockAudio: () => Promise<void>;
   serverNow: () => number;
   online: Set<string>;
 };
 
 export function TvApp() {
   const { code } = useParams<{ code: string }>();
-  const [owner, setOwner] = useState<string | null | undefined>(undefined);
-  const [audio] = useState(() => new AudioManager());
-  const [audioOn, setAudioOn] = useState(false);
+  const [host, setHost] = useState<string | null | undefined>(undefined);
+  const [audio] = useState(sharedAudio);
+  const [audioOn, setAudioOn] = useState(() => audio.unlocked);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- token só existe no navegador
-    setOwner(getOwnerToken(code));
+    setHost(getOwnerToken(code));
   }, [code]);
 
   // alguém apertou EU SEI!: para o som na hora, antes mesmo de reler o estado
@@ -39,20 +42,36 @@ export function TvApp() {
     },
     [audio],
   );
-  const { state, notFound, online, connected, serverNow } = useRoom(code, { kind: "tv" }, onEvent);
+  const { state, notFound, online, connected, serverNow, ownerAway } = useRoom(
+    code,
+    { kind: "tv", audio: audioOn },
+    onEvent,
+  );
   useWakeLock(true);
 
-  const unlockAudio = useCallback(async () => {
-    await audio.unlock();
-    setAudioOn(true);
-  }, [audio]);
+  // (com apresentador) celular dele caiu no meio da partida: pausa até ele voltar (e retoma sozinho)
+  const phase = state?.room.phase;
+  const hostStyle = state?.room.settings.roomStyle === "host";
+  const claimed = !!state?.owner.claimed;
+  const away = hostStyle && claimed && ownerAway;
+  const autoPaused = state?.room.paused && state.room.pause_reason === "owner_away";
+  useEffect(() => {
+    if (!host || !phase) return;
+    if (away && phase === "playing" && !state?.room.paused) api.ownerAway(code, host, true).catch(() => {});
+    if (!away && autoPaused) api.ownerAway(code, host, false).catch(() => {});
+  }, [away, autoPaused, phase, host, code, state?.room.paused]);
 
-  if (owner === undefined) return <Center><Spinner /></Center>;
-  if (!owner) {
+  const unlockAudio = async () => {
+    await audio.unlock();
+    setAudioOn(audio.unlocked);
+  };
+
+  if (host === undefined) return <Center><Spinner /></Center>;
+  if (!host) {
     return (
       <Center>
         <Logo className="text-5xl" />
-        <p className="text-2xl">Esta tela não é a dona da sala {code}.</p>
+        <p className="text-2xl">Esta tela não é a tela principal da sala {code}.</p>
         <p className="text-white/70">Para jogar, abra o link no celular. Para criar uma sala nova, use outra tela.</p>
         <div className="flex gap-4">
           <Link href={`/j/${code}`} className="underline text-yellow-300 text-xl">Entrar como jogador</Link>
@@ -71,8 +90,22 @@ export function TvApp() {
   }
   if (!state) return <Center><Spinner label="Conectando…" /></Center>;
 
-  const ctx: TvCtx = { code, owner, audio, unlockAudio, serverNow, online };
-  const phase = state.room.phase;
+  // único clique na TV: o navegador exige um toque no próprio aparelho para liberar o som
+  if (!audioOn) {
+    return (
+      <Center>
+        <Logo className="text-5xl" />
+        <p className="text-2xl text-white/80">Clique para liberar o som nesta tela.</p>
+        <Button className="text-4xl px-12 py-6" onClick={unlockAudio}>▶ Começar</Button>
+        <p className="text-white/50">Só é preciso clicar aqui uma vez.</p>
+      </Center>
+    );
+  }
+
+  if (hostStyle && !claimed) return <OwnerClaimScreen code={code} host={host} />;
+
+  const ctx: TvCtx = { code, host, audio, serverNow, online };
+  const fullOverlay = away && (phase === "playing" || phase === "finished");
 
   return (
     <div className="relative flex flex-1 flex-col">
@@ -83,19 +116,19 @@ export function TvApp() {
       )}
       {phase === "config" && <ConfigScreen state={state} ctx={ctx} />}
       {phase === "lobby" && <LobbyScreen state={state} ctx={ctx} />}
-      {phase === "playing" &&
-        (audioOn && audio.unlocked ? (
-          <GameScreen state={state} ctx={ctx} />
-        ) : (
-          <Center>
-            <Logo className="text-5xl" />
-            <p className="text-2xl text-white/80">A partida está rolando. Clique para liberar o som nesta tela.</p>
-            <Button className="text-4xl px-12 py-6" onClick={unlockAudio}>
-              ▶ Começar
-            </Button>
-          </Center>
-        ))}
+      {phase === "playing" && <GameScreen state={state} ctx={ctx} />}
       {phase === "finished" && <FinalScreen state={state} ctx={ctx} />}
+      {away && (
+        <div
+          className={
+            fullOverlay
+              ? "absolute inset-0 z-50 flex items-center justify-center bg-black/80"
+              : "absolute bottom-4 right-4 z-50"
+          }
+        >
+          <OwnerAwayPanel code={code} host={host} big={fullOverlay} />
+        </div>
+      )}
     </div>
   );
 }

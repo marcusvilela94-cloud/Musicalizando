@@ -4,15 +4,15 @@ import type { Round } from "@/lib/types";
 
 export type StageDef = { seconds: number; points: number };
 
-/** Props do "motor" de um modo na tela principal (controla som e relógio da rodada). */
+/** Props do "motor" de um modo na tela principal (só toca o som; quem comanda é o celular do dono). */
 export type TvEngineProps = {
-  code: string;
-  owner: string;
   round: Round;
   paused: boolean;
-  attemptCount: number;
   buffer: AudioBuffer | null;
   audio: AudioManager;
+  serverNow: () => number;
+  /** avisa a tela se um trecho está tocando agora (para o visual) */
+  onPlayingChange: (playing: boolean) => void;
 };
 
 /**
@@ -25,6 +25,8 @@ export type ModeDef = {
   label: string;
   description: string;
   stages: StageDef[];
-  /** componente sem UI que toca a rodada e chama npl_advance_stage */
+  /** sorteia o ponto de início de cada trecho (guardado na rodada) */
+  pickOffsets: (durationSec: number) => number[];
+  /** componente sem UI que toca os trechos quando o dono manda */
   TvEngine: ComponentType<TvEngineProps>;
 };

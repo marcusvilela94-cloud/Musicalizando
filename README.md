@@ -28,6 +28,19 @@ Tudo usa o prefixo `npl_`. Aplique no SQL Editor, nesta ordem:
 1. `supabase/migrations/20261104000001_npl_schema.sql`
 2. `supabase/migrations/20261104000002_npl_helpers.sql`
 3. `supabase/migrations/20261104000003_npl_rpc.sql`
+4. `supabase/migrations/20261105000004_npl_estilos_trechos_partes.sql`
+
+## Como funciona
+
+- **Estilo "Todos jogam"** (padrão): sem apresentador. A TV/notebook mostra o jogo e tem os controles
+  (atalhos: espaço = Tocar, R = Repetir, → = Próximo trecho / próxima música, P = Pausar). Respostas digitadas e
+  conferidas automaticamente; na zona de dúvida o time vê "Quase! Confira a escrita" e pode reenviar.
+  Na revelação, "Contestar" inverte decisões.
+- **Estilo "Com apresentador"**: a TV só exibe. Quem escaneia o QR "Sou o apresentador" comanda tudo pelo
+  celular (não joga e vê a resposta desde o início). Resposta falada (o apresentador julga) ou digitada.
+  Se o celular dele cair, a TV pausa e mostra o QR de reconexão.
+- Nada toca sozinho: Tocar / Repetir / Próximo trecho. Cada trecho começa num ponto sorteado da prévia
+  (guardado na rodada). Artista vale 50%, música 100%. Quem erra fica bloqueado alguns segundos (horário no banco).
 
 As tabelas têm RLS ligado e nenhuma policy, ou seja, ninguém lê nem escreve nelas diretamente. Para ler, usa-se `npl_get_state(código)`; para escrever, as RPCs `security definer`, que validam o token. O tempo real usa Realtime Broadcast (`realtime.send`, canal `npl_room_<id>`), então não é preciso mexer na publicação `supabase_realtime`.
 

@@ -20,7 +20,8 @@ const sqlSrc = readdirSync("supabase/migrations")
 let checked = 0;
 for (const m of apiSrc.matchAll(/"(npl_\w+)",\s*\{([^}]*)\}/g)) {
   const [, fn, body] = m;
-  const sig = sqlSrc.match(new RegExp(`function public\\.${fn}\\(([^)]*)\\)`));
+  // vale a última definição (migrações novas substituem as antigas)
+  const sig = [...sqlSrc.matchAll(new RegExp(`function public\\.${fn}\\(([^)]*)\\)`, "g"))].at(-1);
   assert.ok(sig, `função ${fn} não existe no SQL`);
   for (const a of body.matchAll(/(p_\w+):/g)) assert.ok(sig[1].includes(a[1] + " "), `${fn}: argumento ${a[1]} não existe`);
   checked++;
@@ -42,12 +43,14 @@ const tracks = [
 await rpc("npl_start_match", { p_code: code, p_owner_token: OWNER, p_tracks: tracks });
 let st = await rpc("npl_get_state", { p_code: code });
 const R = st.rounds[0].id;
-await rpc("npl_round_begin", { p_code: code, p_owner_token: OWNER, p_round_id: R, p_artists: ["Daft Punk"] });
+await rpc("npl_round_begin", { p_code: code, p_owner_token: OWNER, p_round_id: R, p_artists: ["Daft Punk"], p_offsets: [3, 10, 20, 0, 12, 0] });
+const pl = await rpc("npl_play", { p_code: code, p_owner_token: OWNER, p_round_id: R, p_stage: 1, p_advance: false });
+assert.equal(pl.ok, true);
 const bz = await rpc("npl_buzz", { p_code: code, p_token: A, p_round_id: R });
 assert.equal(bz.ok, true);
-const ans = await rpc("npl_submit_answer", { p_code: code, p_token: A, p_attempt_id: bz.attempt_id, p_artist: "daft punk", p_title: "" });
+const ans = await rpc("npl_submit_answer", { p_code: code, p_token: A, p_attempt_id: bz.attempt_id, p_artist: "daft punk", p_title: "harder better faster stronger" });
 assert.equal(ans.result, "correct");
-assert.equal(ans.points, 100);
+assert.equal(ans.points, 150); // artista 50% + música 100%
 await rpc("npl_next_round", { p_code: code, p_owner_token: OWNER, p_from_round: 1 });
 st = await rpc("npl_get_state", { p_code: code });
 assert.equal(st.room.phase, "finished");

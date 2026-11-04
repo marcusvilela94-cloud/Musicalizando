@@ -115,7 +115,36 @@ await rpc("npl_move_player", code, OWNER, b.id, teamIds[1]);
 await rpc("npl_move_player", code, OWNER, c.id, teamIds[1]);
 const [A, B] = teamIds;
 
-// ---------- partida ----------
+// ---------- estilo "Com apresentador" ----------
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.settings.roomStyle, "all", "padrão: todos jogam");
+assert.equal(st.room.settings.answerMode, "typed", "todos jogam: sempre digitada");
+assert.equal(st.room.settings.lockSeconds, 15);
+assert.equal(st.room.settings.sounds, true);
+await rpc("npl_update_settings", code, OWNER, { roomStyle: "host", answerMode: "spoken", lockSeconds: 99 });
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.settings.answerMode, "spoken", "com apresentador: falada");
+assert.equal(st.room.settings.lockSeconds, 15, "valor inválido volta ao padrão");
+assert.equal(st.owner.claimed, false);
+assert.equal(st.room.ctrl_hash, undefined, "hash do apresentador não vaza");
+
+const CLAIM = "claim-secret-1234567890";
+const PRES = "presenter-token-1234567890";
+await fails(rpc("npl_open_claim", code, P(1), CLAIM), "not_host");
+await rpc("npl_open_claim", code, OWNER, CLAIM);
+await fails(rpc("npl_claim_owner", code, "errado-errado-errado", PRES), "bad_claim");
+assert.equal((await rpc("npl_claim_owner", code, CLAIM, PRES)).ok, true);
+await fails(rpc("npl_claim_owner", code, CLAIM, P(2)), "bad_claim"); // uso único
+assert.equal((await rpc("npl_claim_owner", code, "qualquer-coisa-xxxxx", PRES)).ok, true, "reconexão com o mesmo token");
+assert.equal(await rpc("npl_is_owner", code, PRES), true);
+assert.equal(await rpc("npl_is_owner", code, P(2)), false);
+st = await rpc("npl_get_state", code);
+assert.equal(st.owner.claimed, true);
+assert.equal(st.room.claim_hash, undefined);
+await rpc("npl_update_settings", code, PRES, { answerMode: "typed" });
+await rpc("npl_update_settings", code, PRES, { answerMode: "spoken" });
+
+// ---------- partida (falada) ----------
 const tracks = [1, 2, 3, 4, 5].map((i) => ({
   deezer_id: 1000 + i,
   title: i === 1 ? "Evidências (Ao Vivo)" : `Musica Numero ${i}`,
@@ -124,144 +153,237 @@ const tracks = [1, 2, 3, 4, 5].map((i) => ({
   artists: [i === 1 ? "Chitãozinho & Xororó" : `Artista ${i}`],
   cover: "x",
 }));
-await rpc("npl_start_match", code, OWNER, tracks);
+await rpc("npl_start_match", code, PRES, tracks);
 st = await rpc("npl_get_state", code);
 assert.equal(st.room.phase, "playing");
-assert.equal(st.rounds.length, 1);
 assert.equal(st.rounds[0].reveal, null, "resposta escondida");
 let R = st.rounds[0].id;
 const ht = await rpc("npl_host_tracks", code, OWNER);
 assert.deepEqual(ht.map((x) => x.deezer_id), [1001, 1002]);
-await fails(rpc("npl_host_tracks", code, P(1)), "not_owner");
+await fails(rpc("npl_host_tracks", code, PRES), "not_host");
+await fails(rpc("npl_round_begin", code, PRES, R, [], []), "not_host");
 
-// botão antes da rodada abrir
-assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "closed");
-assert.equal(await rpc("npl_host_answer", code, OWNER), null, "sem dúvida, sem resposta");
-await rpc("npl_round_begin", code, OWNER, R, ["Participação Especial"]);
-await rpc("npl_advance_stage", code, OWNER, R, 1); // estágio 2 = 80 pts
+assert.equal((await rpc("npl_buzz", code, P(2), R)).reason, "closed");
+await rpc("npl_round_begin", code, OWNER, R, ["Participação Especial"], [12, 3, 20, 0.5, 9, 0, "x"]);
+st = await rpc("npl_get_state", code);
+assert.deepEqual(st.rounds[0].offsets, [12, 3, 20, 0.5, 9, 0], "pontos de início guardados");
+assert.equal(st.rounds[0].status, "playing");
+assert.equal(st.rounds[0].play_seq, 0, "nada toca sozinho");
+assert.equal((await rpc("npl_host_answer", code, PRES)).title, "Evidências (Ao Vivo)", "apresentador vê desde o início");
+await fails(rpc("npl_host_answer", code, P(1)), "not_owner");
 
-// dois toques "simultâneos": só um ganha (conexões paralelas no PGlite são serializadas,
-// no Postgres real o FOR UPDATE da sala garante a mesma coisa)
+// tocar / repetir / próximo trecho
+let p = await rpc("npl_play", code, PRES, R, 1, false);
+assert.equal(p.ok, true);
+assert.equal(p.round.play_seq, 1);
+assert.equal(p.round.played_stage, 1);
+p = await rpc("npl_play", code, PRES, R, 1, false); // repetir
+assert.equal(p.round.play_seq, 2);
+assert.equal(p.round.stage, 1);
+p = await rpc("npl_play", code, PRES, R, 1, true); // próximo trecho (80 pts)
+assert.equal(p.round.stage, 2);
+assert.equal(p.round.played_stage, 2);
+assert.equal((await rpc("npl_play", code, PRES, R, 1, true)).ok, false, "toque duplo não avança duas vezes");
+await fails(rpc("npl_play", code, P(2), R, 2, false), "not_owner");
+
+// EU SEI! no silêncio entre trechos, dois toques "simultâneos"
 const [r1, r2] = await Promise.all([rpc("npl_buzz", code, P(2), R), rpc("npl_buzz", code, P(1), R)]);
 assert.equal([r1, r2].filter((x) => x.ok).length, 1, "só um toque vence");
 assert.equal(r1.ok, true);
 assert.equal(r2.reason, "taken");
-// colega do mesmo time não abre outra vez
 assert.equal((await rpc("npl_buzz", code, P(3), R)).reason, "own_turn");
-st = await rpc("npl_get_state", code);
-assert.equal(st.attempts.filter((x) => x.kind === "late").length, 1, "toque atrasado registrado");
+assert.equal((await rpc("npl_submit_answer", code, P(2), r1.attempt_id, "a", "b")).reason, "spoken");
+await fails(rpc("npl_decide", code, P(2), r1.attempt_id, true, true), "not_owner");
 
-// time B erra -> penalidade, B bloqueado
-await fails(rpc("npl_submit_answer", code, P(1), r1.attempt_id, "x", "y").then((r) => {
-  if (r.reason === "not_your_team") throw new Error("not_your_team");
-}), "not_your_team");
-let ans = await rpc("npl_submit_answer", code, P(3), r1.attempt_id, "Zezé", "Pirata");
-assert.equal(ans.result, "wrong");
+// B erra -> penalidade, bloqueio por tempo, volta a esperar no mesmo estágio
+assert.equal(await rpc("npl_decide", code, PRES, r1.attempt_id, false, false), "wrong");
 st = await rpc("npl_get_state", code);
 assert.equal(st.teams.find((t) => t.id === B).score, -20);
-assert.equal(st.rounds[0].locked_team_id, B);
+const lockB = Date.parse(st.rounds[0].locks[B]);
+assert.ok(Math.abs(lockB - st.server_now - 15000) < 2000, "bloqueado por ~15 s");
 assert.equal(st.rounds[0].status, "playing");
-assert.equal((await rpc("npl_buzz", code, P(2), R)).reason, "locked");
+assert.equal(st.rounds[0].stage, 2);
+const lk = await rpc("npl_buzz", code, P(2), R);
+assert.equal(lk.reason, "locked");
+assert.ok(lk.until);
 
-// time A erra -> bloqueio passa para A
+// A acerta só o artista (roubo vale normal): 80 * 50% = 40; rodada continua
 let ra = await rpc("npl_buzz", code, P(1), R);
 assert.equal(ra.ok, true);
-ans = await rpc("npl_submit_answer", code, P(1), ra.attempt_id, "", "nao sei");
-assert.equal(ans.result, "wrong");
+assert.equal(await rpc("npl_decide", code, PRES, ra.attempt_id, true, false), "partial");
 st = await rpc("npl_get_state", code);
-assert.equal(st.rounds[0].locked_team_id, A);
-assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "locked");
+assert.equal(st.rounds[0].status, "playing");
+assert.equal(st.rounds[0].found.artist, "Chitãozinho & Xororó");
+assert.equal(st.rounds[0].found.title, undefined);
+assert.equal(st.rounds[0].artist_team_id, A);
+assert.equal(st.teams.find((t) => t.id === A).score, 40);
+assert.equal(st.attempts.find((x) => x.id === ra.attempt_id).steal, true, "etiqueta de roubo continua");
+assert.equal(st.rounds[0].locks[A], undefined, "acerto parcial não bloqueia");
 
-// B rouba: artista + título no estágio 2 = 80*1.5 = 120, roubo = 60
-let rb = await rpc("npl_buzz", code, P(2), R);
-assert.equal(rb.ok, true);
-ans = await rpc("npl_submit_answer", code, P(2), rb.attempt_id, "chitaozinho e xororo", "evidencias");
-assert.equal(ans.result, "correct");
-assert.equal(ans.points, 60);
+// pausa congela o bloqueio
+await rpc("npl_pause", code, PRES, true);
+await db.query("update npl_rooms set paused_at = paused_at - interval '10 seconds' where code = $1", [code]);
+await rpc("npl_pause", code, PRES, false);
+st = await rpc("npl_get_state", code);
+assert.ok(Date.parse(st.rounds[0].locks[B]) - lockB >= 9500, "bloqueio andou junto com a pausa");
+// o tempo de bloqueio passou: B volta a poder apertar, independente dos outros
+await db.query(`update npl_rounds set locks = jsonb_build_object($1::text, clock_timestamp() - interval '1 second') where id = $2`, [B, R]);
+const rb0 = await rpc("npl_buzz", code, P(2), R);
+assert.equal(rb0.ok, true, "liberado depois do tempo");
+assert.equal(await rpc("npl_decide", code, PRES, rb0.attempt_id, false, false), "wrong");
+
+// próximo trecho (60 pts) e o mesmo time A tenta a música: "Os dois" só conta a música
+await rpc("npl_play", code, PRES, R, 2, true);
+ra = await rpc("npl_buzz", code, P(1), R);
+assert.equal(await rpc("npl_decide", code, PRES, ra.attempt_id, true, true), "correct");
 st = await rpc("npl_get_state", code);
 assert.equal(st.rounds[0].status, "revealed");
+assert.equal(st.rounds[0].title_team_id, A);
 assert.equal(st.rounds[0].reveal.title, "Evidências (Ao Vivo)");
 assert.ok(st.rounds[0].reveal.artists.includes("Participação Especial"));
-assert.equal(st.teams.find((t) => t.id === B).score, 40); // -20 + 60
-assert.equal(st.teams.find((t) => t.id === A).score, -20);
+assert.equal(st.teams.find((t) => t.id === A).score, 40 + 60);
+assert.equal(st.teams.find((t) => t.id === B).score, -40);
 
-// dono inverte o erro de A -> vira acerto (roubo? não: foi a 2a tentativa, já havia erro de B)
-await rpc("npl_override", code, OWNER, ra.attempt_id, true);
+// inverter: o 1º erro de B na verdade acertou os dois (80*1.5 = 120, sem penalidade)
+await rpc("npl_override_parts", code, PRES, r1.attempt_id, true, true);
 st = await rpc("npl_get_state", code);
-assert.equal(st.teams.find((t) => t.id === A).score, 60); // título no estágio 2 = 120 / 2
-await rpc("npl_override", code, OWNER, ra.attempt_id, false);
+assert.equal(st.teams.find((t) => t.id === B).score, 120 - 20);
+assert.equal(st.teams.find((t) => t.id === A).score, 0, "partes já eram de B: A fica sem pontos");
+assert.equal(st.rounds[0].winner_team_id, B);
+await rpc("npl_override_parts", code, PRES, r1.attempt_id, false, false);
 st = await rpc("npl_get_state", code);
-assert.equal(st.teams.find((t) => t.id === A).score, -20);
+assert.equal(st.teams.find((t) => t.id === B).score, -40);
+assert.equal(st.teams.find((t) => t.id === A).score, 100);
 
-// próxima rodada (chamada dupla não avança duas vezes)
-await rpc("npl_show_scoreboard", code, OWNER, R);
-await rpc("npl_next_round", code, OWNER, 1);
-await rpc("npl_next_round", code, OWNER, 1);
+// bug da pausa na revelação: pausar, continuar e avançar sempre funciona
+await rpc("npl_pause", code, PRES, true);
+await rpc("npl_pause", code, PRES, false);
+await rpc("npl_pause", code, PRES, true);
+await rpc("npl_show_scoreboard", code, PRES, R); // avança mesmo pausado e tira a pausa
 st = await rpc("npl_get_state", code);
-assert.equal(st.room.round_no, 2);
+assert.equal(st.rounds[0].status, "scoreboard");
+assert.equal(st.room.paused, false);
+await rpc("npl_pause", code, PRES, true);
+await rpc("npl_next_round", code, PRES, 1);
+await rpc("npl_next_round", code, PRES, 1);
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.round_no, 2, "avançou uma vez só");
+assert.equal(st.room.paused, false);
 R = st.rounds[1].id;
-await rpc("npl_round_begin", code, OWNER, R, []);
+await rpc("npl_round_begin", code, OWNER, R, [], []);
 
-// zona de dúvida: "Musica Numer 2" vs "Musica Numero 2"? isso é ok; use algo a ~30%
-rb = await rpc("npl_buzz", code, P(2), R);
-ans = await rpc("npl_submit_answer", code, P(2), rb.attempt_id, "", "Muziqa Nmro 2");
+// apresentador sumiu: a TV pausa; ao voltar, retoma (mas não tira uma pausa dele)
+await fails(rpc("npl_owner_away", code, PRES, true), "not_host");
+await rpc("npl_owner_away", code, OWNER, true);
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.paused, true);
+assert.equal(st.room.pause_reason, "owner_away");
+assert.equal((await rpc("npl_play", code, PRES, R, 1, false)).ok, false, "pausado não toca");
+await rpc("npl_owner_away", code, OWNER, false);
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.paused, false);
+await rpc("npl_pause", code, PRES, true);
+await rpc("npl_owner_away", code, OWNER, false);
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.paused, true, "pausa do apresentador continua");
+await rpc("npl_pause", code, PRES, false);
+
+// ---------- com apresentador + digitada ----------
+await db.query(`update npl_rooms set settings = settings || '{"answerMode":"typed"}' where code = $1`, [code]);
+await rpc("npl_play", code, PRES, R, 1, false);
+let rb = await rpc("npl_buzz", code, P(2), R);
+// artista certo + música errada: ganha o artista (50), leva penalidade e bloqueio
+let ans = await rpc("npl_submit_answer", code, P(3), rb.attempt_id, "Artista 2", "outra coisa totalmente");
+assert.equal(ans.result, "partial");
+assert.equal(ans.points, 50 - 20);
+st = await rpc("npl_get_state", code);
+assert.ok(st.rounds[1].locks[B]);
+assert.equal(st.rounds[1].found.artist, "Artista 2");
+// A: zona de dúvida na música (o artista já saiu, é ignorado) -> o apresentador decide
+ra = await rpc("npl_buzz", code, P(1), R);
+ans = await rpc("npl_submit_answer", code, P(1), ra.attempt_id, "qualquer", "Muziqa Nmro 2");
 assert.equal(ans.result, "doubt");
 st = await rpc("npl_get_state", code);
-assert.equal(st.rounds[1].status, "doubt");
-assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "taken");
-await fails(rpc("npl_judge", code, P(1), rb.attempt_id, true), "not_owner");
-assert.equal((await rpc("npl_host_answer", code, OWNER)).title, "Musica Numero 2");
-await fails(rpc("npl_host_answer", code, P(1)), "not_owner");
-assert.equal(await rpc("npl_judge", code, OWNER, rb.attempt_id, true), "correct");
+assert.equal(st.attempts.find((x) => x.id === ra.attempt_id).answer_artist, null);
+await fails(rpc("npl_judge", code, P(2), ra.attempt_id, true), "not_owner");
+assert.equal(await rpc("npl_judge", code, PRES, ra.attempt_id, true), "correct");
 st = await rpc("npl_get_state", code);
-assert.equal(st.teams.find((t) => t.id === B).score, 40 + 150);
+assert.equal(st.rounds[1].status, "revealed");
+assert.equal(st.teams.find((t) => t.id === A).score, 100 + 100);
+assert.equal(st.teams.find((t) => t.id === B).score, -40 + 30);
 
-// tempo esgotado + pausa
-await rpc("npl_next_round", code, OWNER, 2);
+// ---------- estilo "Todos jogam" (controles na TV, digitada, "Quase!") ----------
+await db.query(`update npl_rooms set settings = settings || '{"roomStyle":"all"}' where code = $1`, [code]);
+await rpc("npl_next_round", code, OWNER, 2); // a TV comanda
 st = await rpc("npl_get_state", code);
 R = st.rounds[2].id;
-await rpc("npl_round_begin", code, OWNER, R, []);
+await rpc("npl_round_begin", code, OWNER, R, [], []);
+assert.equal(await rpc("npl_host_answer", code, OWNER), null, "todos jogam: ninguém vê a resposta antes");
+await rpc("npl_play", code, OWNER, R, 1, false);
 ra = await rpc("npl_buzz", code, P(1), R);
-assert.equal(await rpc("npl_tick", code), false);
-await db.query("update npl_attempts set deadline = clock_timestamp() - interval '5 seconds' where id = $1", [ra.attempt_id]);
-assert.equal(await rpc("npl_tick", code), true);
+ans = await rpc("npl_submit_answer", code, P(1), ra.attempt_id, "Artista 3", "Muziqa Nmro 3");
+assert.equal(ans.result, "almost");
+assert.equal(ans.title, "doubt");
 st = await rpc("npl_get_state", code);
-assert.equal(st.attempts.find((x) => x.id === ra.attempt_id).status, "timeout");
-assert.equal(st.rounds[2].locked_team_id, A);
-await rpc("npl_pause", code, OWNER, true);
-assert.equal((await rpc("npl_buzz", code, P(2), R)).reason, "paused");
-await rpc("npl_pause", code, OWNER, false);
-
-// estágios até o fim -> revela sem pontos
-for (let s = 1; s <= 6; s++) await rpc("npl_advance_stage", code, OWNER, R, s);
+assert.equal(st.rounds[2].status, "answering", "a vez continua; nada vaza para a TV");
+assert.equal(st.attempts.find((x) => x.id === ra.attempt_id).status, "open");
+ans = await rpc("npl_submit_answer", code, P(1), ra.attempt_id, "Artista 3", "Musica Numero 3");
+assert.equal(ans.result, "correct");
+assert.equal(ans.points, 150);
+// Contestar (TV, na revelação): inverte para "não valeu"
+await rpc("npl_override_parts", code, OWNER, ra.attempt_id, false, false);
 st = await rpc("npl_get_state", code);
-assert.equal(st.rounds[2].status, "revealed");
-assert.equal(st.rounds[2].winner_team_id, null);
+assert.equal(st.teams.find((t) => t.id === A).score, 200 - 20);
+await rpc("npl_override_parts", code, OWNER, ra.attempt_id, true, true);
+st = await rpc("npl_get_state", code);
+assert.equal(st.teams.find((t) => t.id === A).score, 350);
 
-// jogador entra no meio: só joga a partir da próxima rodada
-const d = await rpc("npl_join", code, P(4), "Duda");
-await rpc("npl_set_team", code, P(4), A);
-await fails(rpc("npl_set_team", code, P(4), B), "team_locked");
+// "Quase!" e o tempo acaba: conta como erro
 await rpc("npl_next_round", code, OWNER, 3);
 st = await rpc("npl_get_state", code);
 R = st.rounds[3].id;
-await rpc("npl_round_begin", code, OWNER, R, []);
-assert.equal((await rpc("npl_buzz", code, P(4), R)).ok, true, "Duda joga na rodada 4");
-
-// pular música
-await rpc("npl_skip_round", code, OWNER, R);
+await rpc("npl_round_begin", code, OWNER, R, [], []);
+rb = await rpc("npl_buzz", code, P(2), R);
+assert.equal((await rpc("npl_submit_answer", code, P(2), rb.attempt_id, "", "Muziqa Nmro 4")).result, "almost");
+assert.equal(await rpc("npl_tick", code), false);
+await db.query("update npl_attempts set deadline = clock_timestamp() - interval '5 seconds' where id = $1", [rb.attempt_id]);
+assert.equal(await rpc("npl_tick", code), true);
 st = await rpc("npl_get_state", code);
-assert.equal(st.rounds[3].skipped, true);
-await rpc("npl_adjust_score", code, OWNER, A, 10);
+assert.equal(st.attempts.find((x) => x.id === rb.attempt_id).status, "timeout");
+assert.ok(st.rounds[3].locks[B]);
+assert.equal(st.teams.find((t) => t.id === B).score, -10 - 20);
+await rpc("npl_pause", code, OWNER, true);
+assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "paused");
+await rpc("npl_pause", code, OWNER, false);
+
+// último trecho: não avança mais; revela sem pontos
+for (let s = 1; s <= 5; s++) assert.equal((await rpc("npl_play", code, OWNER, R, s, true)).ok, true);
+assert.equal((await rpc("npl_play", code, OWNER, R, 6, true)).ok, false);
+await rpc("npl_end_round", code, OWNER, R);
+st = await rpc("npl_get_state", code);
+assert.equal(st.rounds[3].status, "revealed");
+assert.equal(st.rounds[3].skipped, false);
+assert.equal(st.rounds[3].winner_team_id, null);
+
+// jogador entra no meio: só joga a partir da próxima rodada
+await rpc("npl_join", code, P(4), "Duda");
+await rpc("npl_set_team", code, P(4), A);
+await fails(rpc("npl_set_team", code, P(4), B), "team_locked");
 await rpc("npl_next_round", code, OWNER, 4);
 st = await rpc("npl_get_state", code);
 R = st.rounds[4].id;
-await rpc("npl_round_begin", code, OWNER, R, []);
+await rpc("npl_round_begin", code, OWNER, R, [], []);
+assert.equal((await rpc("npl_buzz", code, P(4), R)).ok, true, "Duda joga na rodada 5");
+
+// pular música e fim
 await rpc("npl_skip_round", code, OWNER, R);
+st = await rpc("npl_get_state", code);
+assert.equal(st.rounds[4].skipped, true);
+await rpc("npl_adjust_score", code, OWNER, A, 10);
 await rpc("npl_next_round", code, OWNER, 5);
 st = await rpc("npl_get_state", code);
 assert.equal(st.room.phase, "finished");
-assert.equal(st.teams.find((t) => t.id === A).score, -30); // -20 erro, -20 tempo, +10 ajuste
+assert.equal(st.teams.find((t) => t.id === A).score, 360);
 
 // revanche zera o placar e mantém os times
 await rpc("npl_start_match", code, OWNER, tracks);
@@ -269,6 +391,35 @@ st = await rpc("npl_get_state", code);
 assert.equal(st.room.match_no, 2);
 assert.deepEqual(st.teams.map((t) => t.score), [0, 0]);
 assert.equal(st.teams.length, 2);
+
+// "Só a música": música = 100%
+await db.query(`update npl_rooms set settings = settings || '{"scoring":"title","roomStyle":"host","answerMode":"spoken"}' where code = $1`, [code]);
+st = await rpc("npl_get_state", code);
+R = st.rounds[0].id;
+await rpc("npl_round_begin", code, OWNER, R, [], []);
+rb = await rpc("npl_buzz", code, P(2), R);
+assert.equal(await rpc("npl_decide", code, PRES, rb.attempt_id, true, false), "wrong", "artista não vale em 'só a música'");
+ra = await rpc("npl_buzz", code, P(1), R);
+assert.equal(await rpc("npl_decide", code, PRES, ra.attempt_id, false, true), "correct");
+st = await rpc("npl_get_state", code);
+assert.equal(st.teams.find((t) => t.id === A).score, 100);
+
+// com apresentador: sem ele não começa; quem vira apresentador sai do time
+const { code: code2 } = await rpc("npl_create_room", OWNER, { roomStyle: "host" });
+await rpc("npl_join", code2, P(5), "Eva");
+await rpc("npl_join", code2, P(6), "Fábio");
+await rpc("npl_join", code2, P(7), "Gil");
+await fails(rpc("npl_start_match", code2, OWNER, tracks), "no_owner");
+await rpc("npl_open_claim", code2, OWNER, CLAIM);
+await rpc("npl_claim_owner", code2, CLAIM, P(7));
+st = await rpc("npl_get_state", code2);
+assert.equal(st.players.length, 2, "apresentador não joga");
+await rpc("npl_start_match", code2, P(7), tracks);
+// todos jogam: começa sem apresentador
+const { code: code3 } = await rpc("npl_create_room", OWNER, {});
+await rpc("npl_join", code3, P(5), "Eva");
+await rpc("npl_join", code3, P(6), "Fábio");
+await rpc("npl_start_match", code3, OWNER, tracks);
 
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);

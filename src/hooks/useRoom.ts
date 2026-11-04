@@ -5,8 +5,19 @@ import { api, onAfterMutation } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { RoomState } from "@/lib/types";
 
-type Presence = { kind: "tv" | "player"; playerId?: string };
+/** O que cada aparelho anuncia no canal (presença do Supabase Realtime). */
+export type Presence = {
+  kind: "tv" | "player" | "owner";
+  playerId?: string;
+  owner?: boolean; // celular do dono (jogando ou só apresentando)
+  audio?: boolean; // TV com o som liberado
+};
+export type Peers = { players: Set<string>; owner: boolean; tv: boolean; tvAudio: boolean };
 type SyncEvent = { kind?: string; team_id?: string; attempt_id?: string; v?: number };
+
+const NO_PEERS: Peers = { players: new Set(), owner: false, tv: false, tvAudio: false };
+/** Tempo sem o celular do dono antes de considerar que ele caiu (blips de rede não pausam o jogo). */
+const OWNER_GRACE_MS = 6000;
 
 /**
  * Mantém o estado da sala sincronizado. O banco é a única fonte da verdade:
@@ -19,7 +30,8 @@ export function useRoom(code: string, presence?: Presence, onEvent?: (e: SyncEve
   const [state, setState] = useState<RoomState | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [online, setOnline] = useState<Set<string>>(new Set());
+  const [peers, setPeers] = useState<Peers>(NO_PEERS);
+  const [ownerAway, setOwnerAway] = useState(false);
   const [connected, setConnected] = useState(false);
 
   const versionRef = useRef(-1);
@@ -76,41 +88,75 @@ export function useRoom(code: string, presence?: Presence, onEvent?: (e: SyncEve
   }, [refresh]);
 
   const roomId = state?.room.id;
-  const presenceKey = presence ? `${presence.kind}:${presence.playerId ?? ""}` : "";
+  const presenceJson = presence ? JSON.stringify(presence) : "";
+  const presenceRef = useRef(presenceJson);
+  useEffect(() => {
+    presenceRef.current = presenceJson;
+  }, [presenceJson]);
+  const [presenceKey] = useState(() => `p-${Math.random().toString(36).slice(2)}`);
+  const ownerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // canal Realtime
   useEffect(() => {
     if (!roomId) return;
+    const clearOwnerTimer = () => {
+      if (ownerTimer.current) clearTimeout(ownerTimer.current);
+      ownerTimer.current = null;
+    };
     const ch = supabase().channel(`npl_room_${roomId}`, {
-      config: { broadcast: { self: false }, presence: { key: presenceKey || `anon-${Math.random()}` } },
+      config: { broadcast: { self: false }, presence: { key: presenceKey } },
     });
     ch.on("broadcast", { event: "sync" }, ({ payload }) => {
       onEventRef.current?.(payload as SyncEvent);
       refresh();
     });
     ch.on("presence", { event: "sync" }, () => {
-      const ids = new Set<string>();
+      const p: Peers = { players: new Set(), owner: false, tv: false, tvAudio: false };
       for (const metas of Object.values(ch.presenceState<Presence>())) {
-        for (const m of metas) if (m.playerId) ids.add(m.playerId);
+        for (const m of metas) {
+          if (m.playerId) p.players.add(m.playerId);
+          if (m.owner) p.owner = true;
+          if (m.kind === "tv") {
+            p.tv = true;
+            if (m.audio) p.tvAudio = true;
+          }
+        }
       }
-      setOnline(ids);
+      setPeers(p);
+      // o celular do dono sumiu? só conta depois de alguns segundos
+      if (p.owner) {
+        clearOwnerTimer();
+        setOwnerAway(false);
+      } else if (!ownerTimer.current) {
+        ownerTimer.current = setTimeout(() => {
+          ownerTimer.current = null;
+          setOwnerAway(true);
+        }, OWNER_GRACE_MS);
+      }
     });
     ch.subscribe(async (status) => {
       setConnected(status === "SUBSCRIBED");
       if (status === "SUBSCRIBED") {
-        if (presenceKey) {
-          const [kind, playerId] = presenceKey.split(":");
-          await ch.track({ kind, playerId: playerId || undefined });
-        }
+        if (presenceRef.current) await ch.track(JSON.parse(presenceRef.current));
         refresh();
+      } else {
+        // sem canal não dá para saber quem está online: não acusa o dono
+        clearOwnerTimer();
+        setOwnerAway(false);
       }
     });
     channelRef.current = ch;
     return () => {
+      clearOwnerTimer();
       channelRef.current = null;
       supabase().removeChannel(ch);
     };
   }, [roomId, presenceKey, refresh]);
+
+  // presença mudou (ex.: TV liberou o som, jogador virou dono): anuncia de novo
+  useEffect(() => {
+    if (connected && presenceJson) channelRef.current?.track(JSON.parse(presenceJson)).catch(() => {});
+  }, [connected, presenceJson]);
 
   // depois de cada escrita: recarrega e avisa os outros aparelhos
   useEffect(() => {
@@ -141,5 +187,5 @@ export function useRoom(code: string, presence?: Presence, onEvent?: (e: SyncEve
 
   const serverNow = useCallback(() => Date.now() + offsetRef.current, []);
 
-  return { state, notFound, error, online, connected, refresh, serverNow };
+  return { state, notFound, error, online: peers.players, peers, ownerAway, connected, refresh, serverNow };
 }

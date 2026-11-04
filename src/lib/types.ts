@@ -5,7 +5,9 @@ export type MusicSource =
   | { type: "playlist"; id: string; label: string; picture?: string | null; nbTracks?: number }
   | { type: "artist"; id: string; label: string; picture?: string | null };
 
-export type Scoring = "artist_title" | "title";
+export type Scoring = "artist_title" | "title"; // "Artista e música" | "Só a música"
+export type AnswerMode = "spoken" | "typed"; // "Falada" | "Digitada"
+export type RoomStyle = "all" | "host"; // "Todos jogam" | "Com apresentador"
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
 export type RoomSettings = {
@@ -16,6 +18,10 @@ export type RoomSettings = {
   answerSeconds: 0 | 10 | 20 | 30; // 0 = sem limite
   penalty: 0 | 20 | 50;
   scoring: Scoring;
+  roomStyle: RoomStyle;
+  answerMode: AnswerMode; // no estilo "all" é sempre "typed"
+  lockSeconds: 10 | 15 | 20 | 30; // bloqueio após erro
+  sounds: boolean; // efeitos sonoros na TV
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
@@ -46,6 +52,7 @@ export type Room = {
   total_rounds: number;
   paused: boolean;
   paused_at: string | null;
+  pause_reason: "owner" | "owner_away" | null;
   version: number;
   created_at: string;
   last_activity_at: string;
@@ -88,6 +95,14 @@ export type Round = {
   points: number;
   skipped: boolean;
   reveal: Reveal | null;
+  offsets: number[]; // segundo de início de cada trecho (sorteado no início da rodada)
+  play_seq: number; // +1 a cada "Tocar" / "Repetir" / "Próximo trecho"
+  played_stage: number; // último estágio tocado (0 = nenhum)
+  play_at: string | null;
+  artist_team_id: string | null;
+  title_team_id: string | null;
+  found: { artist?: string; title?: string }; // partes já descobertas
+  locks: Record<string, string>; // team_id -> horário (servidor) em que o time é liberado
   started_at: string | null;
   revealed_at: string | null;
 };
@@ -115,11 +130,13 @@ export type Attempt = {
   points: number;
   decided_by: "auto" | "owner" | null;
   overridden: boolean;
+  decided_at: string | null;
 };
 
 export type RoomState = {
   server_now: number;
   room: Room;
+  owner: { claimed: boolean; player_id: string | null };
   teams: Team[];
   players: Player[];
   rounds: Round[];
