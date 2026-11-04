@@ -70,7 +70,10 @@ export async function getPlaylistInfo(id: string) {
 
 export async function searchArtists(q: string) {
   const r = await dz<DzList<DzArtist>>(`/search/artist?q=${encodeURIComponent(q)}&limit=8`);
-  return (r.data ?? []).map((a) => ({ id: String(a.id), name: a.name, picture: a.picture_medium ?? null, fans: a.nb_fan ?? 0 }));
+  // a busca do Deezer às vezes põe homônimos pequenos na frente: ordena por fãs
+  return (r.data ?? [])
+    .map((a) => ({ id: String(a.id), name: a.name, picture: a.picture_medium ?? null, fans: a.nb_fan ?? 0 }))
+    .sort((a, b) => b.fans - a.fans);
 }
 
 async function getPlaylistTracks(id: string, max = 400): Promise<DzTrack[]> {

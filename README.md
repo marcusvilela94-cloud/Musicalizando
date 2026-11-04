@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Musicalizando 🎶
 
-## Getting Started
+Jogo de festa de adivinhar músicas. Uma tela principal (TV/notebook) toca o som; cada jogador usa o celular como controle.
 
-First, run the development server:
+## Rodar localmente
 
 ```bash
+npm install
+cp .env.example .env.local   # preencha com os dados do Supabase
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Tela principal: `http://localhost:3000/tv`
+- Celular: `http://<ip-do-notebook>:3000/j` (mesma rede Wi-Fi)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Testes (sem tocar no Supabase)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run test:db        # roda as migrações e cenários do jogo num Postgres em memória (PGlite)
+npm run dev:fake-db    # emula as RPCs do Supabase em http://localhost:54329 (sem Realtime: usa polling)
+node scripts/rpc-contract-test.mjs   # com o dev:fake-db rodando: confere api.ts <-> SQL
+```
 
-## Learn More
+## Banco (projeto Supabase compartilhado)
 
-To learn more about Next.js, take a look at the following resources:
+Tudo usa o prefixo `npl_`. Aplique no SQL Editor, nesta ordem:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. `supabase/migrations/20261104000001_npl_schema.sql`
+2. `supabase/migrations/20261104000002_npl_helpers.sql`
+3. `supabase/migrations/20261104000003_npl_rpc.sql`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+As tabelas têm RLS ligado e nenhuma policy, ou seja, ninguém lê nem escreve nelas diretamente. Para ler, usa-se `npl_get_state(código)`; para escrever, as RPCs `security definer`, que validam o token. O tempo real usa Realtime Broadcast (`realtime.send`, canal `npl_room_<id>`), então não é preciso mexer na publicação `supabase_realtime`.
 
-## Deploy on Vercel
+## Estrutura
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/modes/`: registro de modos de jogo (fase 1: `classic`). Um modo novo define estágios/pontos e um "motor" que toca a rodada na TV.
+- `src/lib/deezer.ts`: acesso ao Deezer, só pelo servidor (rotas `/api/deezer/*`).
+- `src/lib/audio.ts`: Web Audio (fetch + decode) para cortes precisos.
+- `src/hooks/useRoom.ts`: sincronização (Broadcast + presença + polling de segurança).
+- `src/components/tv/*` e `src/components/phone/*`: telas.
