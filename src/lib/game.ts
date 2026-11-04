@@ -42,6 +42,13 @@ export function lockedTeams(s: RoomState, r: Round | null, now: number) {
 export const lockLabel = (l: { waiting: boolean; ms: number }) =>
   l.waiting ? "aguardando a música" : `${Math.ceil(l.ms / 1000)}s`;
 
+/** Todos os artistas creditados, principal primeiro: "Major Lazer, Anitta, Pabllo Vittar". */
+export function artistCredits(r: { artist: string; artists?: string[] | null }) {
+  const all = [r.artist, ...(r.artists ?? [])].map((a) => a?.trim()).filter(Boolean) as string[];
+  const seen = new Set<string>();
+  return all.filter((a) => (seen.has(a.toLowerCase()) ? false : (seen.add(a.toLowerCase()), true))).join(", ");
+}
+
 export const isHostStyle = (s: RoomState) => s.room.settings.roomStyle === "host";
 
 /** Última decisão (acerto/erro) desta rodada, se aconteceu há pouco — para animações. */

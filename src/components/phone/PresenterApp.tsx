@@ -17,6 +17,7 @@ import {
   currentRound,
   lockedTeams,
   lockLabel,
+  artistCredits,
   missingParts,
   ranking,
   roundAttempts,
@@ -154,7 +155,7 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
             🎵 {answer.title} {!need.title && <span className="text-emerald-300">✓</span>}
           </p>
           <p className="font-display text-xl text-pink-200">
-            🎤 {answer.artists?.length ? answer.artists.join(", ") : answer.artist}{" "}
+            🎤 {artistCredits(answer)}{" "}
             {both && !need.artist && <span className="text-emerald-300">✓</span>}
           </p>
         </>
@@ -227,7 +228,7 @@ function DoubtCard({ state, attempt, answer, code, token }: { state: RoomState; 
   };
   const rows: [string, string | null, string, string | null][] = [];
   if (attempt.answer_artist !== null || attempt.artist_result === "doubt")
-    rows.push(["Artista", attempt.answer_artist, answer ? answer.artists.join(", ") || answer.artist : "…", attempt.artist_result]);
+    rows.push(["Artista", attempt.answer_artist, answer ? artistCredits(answer) : "…", attempt.artist_result]);
   rows.push(["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result]);
   return (
     <div className="flex flex-col gap-3 rounded-2xl border-4 border-yellow-300 bg-white/10 p-3">

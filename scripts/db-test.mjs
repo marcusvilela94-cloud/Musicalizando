@@ -58,6 +58,18 @@ assert.equal(await cls("", ["Anitta"], false), "empty");
 assert.equal(await cls("dont stop me now", ["Don't Stop Me Now (Remastered)"], true), "ok");
 assert.equal(await cls("harder better", ["Harder, Better, Faster, Stronger"], true), "wrong");
 assert.equal(await cls("the beatles", ["Beatles"], false), "ok");
+// créditos múltiplos e conectores de parceria
+const jm = ["Jorge & Mateus"];
+for (const a of ["Jorge e Mateus", "jorge and mateus", "Jorge x Mateus", "Jorge feat. Mateus", "Jorge ft Mateus", "Jorge & Mateus"]) {
+  assert.equal(await cls(a, jm, false), "ok", a);
+}
+assert.equal(await cls("Jorge", jm, false), "wrong", "integrante sozinho não vale");
+assert.equal(await cls("Mateus", jm, false), "wrong", "integrante sozinho não vale");
+const ml = ["Major Lazer", "Anitta", "Pabllo Vittar"];
+assert.equal(await cls("Pabllo Vittar", ml, false), "ok", "contributor vale");
+assert.equal(await cls("Anitta e Pablo Vitar", ml, false), "ok", "basta um dos citados");
+assert.equal(await cls("Major Lazer feat. Anitta", ml, false), "ok");
+assert.equal(await cls("Malcolm X", ["Malcolm X"], true), "ok", "título não perde o x");
 console.log("ok normalização");
 
 // ---------- sala ----------
@@ -122,6 +134,7 @@ assert.equal(st.room.settings.answerMode, "typed", "todos jogam: sempre digitada
 assert.equal(st.room.settings.lockSeconds, 15);
 assert.equal(st.room.settings.sounds, true);
 assert.equal(st.room.settings.sfxVolume, "high");
+assert.equal(st.room.settings.clipMode, "sequence", "trechos: em sequência por padrão");
 await rpc("npl_update_settings", code, OWNER, { roomStyle: "host", answerMode: "spoken", lockSeconds: 99 });
 st = await rpc("npl_get_state", code);
 assert.equal(st.room.settings.answerMode, "spoken", "com apresentador: falada");
@@ -133,6 +146,10 @@ assert.equal(st.room.settings.sfxVolume, "low");
 await rpc("npl_update_settings", code, OWNER, { lockSeconds: 15, sfxVolume: "alto demais" });
 st = await rpc("npl_get_state", code);
 assert.equal(st.room.settings.sfxVolume, "high", "volume inválido volta ao padrão");
+await rpc("npl_update_settings", code, OWNER, { clipMode: "alternate" });
+assert.equal((await rpc("npl_get_state", code)).room.settings.clipMode, "alternate");
+await rpc("npl_update_settings", code, OWNER, { clipMode: "zigzag" });
+assert.equal((await rpc("npl_get_state", code)).room.settings.clipMode, "sequence");
 assert.equal(st.owner.claimed, false);
 assert.equal(st.room.ctrl_hash, undefined, "hash do apresentador não vaza");
 

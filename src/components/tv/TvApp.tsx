@@ -7,6 +7,7 @@ import { useRoom } from "@/hooks/useRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { api } from "@/lib/api";
 import { type AudioManager, sharedAudio } from "@/lib/audio";
+import { sharedSfx } from "@/lib/sfx";
 import { getOwnerToken } from "@/lib/tokens";
 import { ConfigScreen } from "./ConfigScreen";
 import { FinalScreen } from "./FinalScreen";
@@ -48,6 +49,11 @@ export function TvApp() {
     onEvent,
   );
   useWakeLock(true);
+
+  // pré-carrega os sons de acerto/erro ao abrir a sala (e decodifica quando o som for liberado)
+  useEffect(() => {
+    sharedSfx().preload();
+  }, [audioOn]);
 
   // (com apresentador) celular dele caiu no meio da partida: pausa até ele voltar (e retoma sozinho)
   const phase = state?.room.phase;

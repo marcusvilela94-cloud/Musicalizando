@@ -1,6 +1,6 @@
 "use client";
-// Efeitos sonoros sintetizados na hora (Web Audio: osciladores + envelopes).
-// Nenhum arquivo de áudio externo. Usa o mesmo AudioContext da música, mas com
+// Efeitos sonoros: acerto e erro vêm de arquivos (public/sfx, pré-carregados e
+// com o silêncio do início/fim cortado); os demais são sintetizados na hora. Usa o mesmo AudioContext da música, mas com
 // uma cadeia própria (volume dos efeitos -> compressor -> saída), separada da música.
 import { type AudioManager, sharedAudio } from "./audio";
 import type { SfxVolume } from "./types";
@@ -17,11 +17,86 @@ const NOTE = (n: number) => 440 * 2 ** ((n - 69) / 12); // MIDI -> Hz
 /** Ganho antes do compressor: quanto maior, mais alto (o compressor segura os picos). */
 const DRIVE: Record<SfxVolume, number> = { low: 1, medium: 2, high: 3.5 };
 
+/** Efeitos que vêm de arquivo. */
+const FILES = { correct: "/sfx/acerto.mp3", wrong: "/sfx/erro.mp3" } as const;
+type FileSfx = keyof typeof FILES;
+/** Ganho dos arquivos (já vêm normalizados; o volume dos efeitos e o compressor fazem o resto). */
+const FILE_GAIN = 0.6;
+/** Abaixo disso (≈ −40 dB) conta como silêncio. */
+const SILENCE = 0.01;
+
+/** Corta o silêncio do início e do fim de um áudio decodificado. */
+function trimSilence(ctx: BaseAudioContext, buf: AudioBuffer): AudioBuffer {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  const loud = (i: number) => chans.some((d) => Math.abs(d[i]) > SILENCE);
+  let start = 0;
+  while (start < buf.length && !loud(start)) start++;
+  let end = buf.length - 1;
+  while (end > start && !loud(end)) end--;
+  if (start >= end) return buf;
+  end = Math.min(buf.length, end + Math.round(buf.sampleRate * 0.01)); // 10 ms de cauda
+  const out = ctx.createBuffer(buf.numberOfChannels, end - start, buf.sampleRate);
+  chans.forEach((d, c) => out.copyToChannel(d.subarray(start, end), c));
+  return out;
+}
+
 export class Sfx {
   enabled = true;
   private volume: SfxVolume = "high";
   private bus: { ctx: AudioContext; input: GainNode } | null = null;
+  private bytes = new Map<FileSfx, Promise<ArrayBuffer>>();
+  private buffers = new Map<FileSfx, { ctx: BaseAudioContext; buf: AudioBuffer }>();
+  private decoding = new Map<FileSfx, Promise<void>>();
   constructor(private audio: AudioManager) {}
+
+  /**
+   * Baixa os arquivos de acerto/erro e, assim que o áudio estiver liberado,
+   * decodifica e corta o silêncio. Chamar ao abrir a sala (e de novo ao liberar o som).
+   */
+  preload() {
+    for (const name of Object.keys(FILES) as FileSfx[]) {
+      if (!this.bytes.has(name)) {
+        const p = fetch(FILES[name]).then((r) => {
+          if (!r.ok) throw new Error(`${FILES[name]}: ${r.status}`);
+          return r.arrayBuffer();
+        });
+        p.catch(() => this.bytes.delete(name));
+        this.bytes.set(name, p);
+      }
+      const ctx = this.audio.ctx;
+      if (ctx && this.buffers.get(name)?.ctx !== ctx && !this.decoding.has(name)) {
+        const d = this.bytes.get(name)!
+          .then((b) => ctx.decodeAudioData(b.slice(0)))
+          .then((buf) => void this.buffers.set(name, { ctx, buf: trimSilence(ctx, buf) }))
+          .catch(() => {})
+          .finally(() => this.decoding.delete(name));
+        this.decoding.set(name, d);
+      }
+    }
+  }
+
+  /** Duração real (s) do efeito: a do arquivo já cortado, se carregado. */
+  length(name: SfxName) {
+    const hit = name === "correct" || name === "wrong" ? this.buffers.get(name) : undefined;
+    return hit && hit.ctx === this.audio.ctx ? hit.buf.duration : SFX_LEN[name];
+  }
+
+  /** Toca o arquivo; devolve false se ainda não carregou (aí usa o sintetizado). */
+  private sample(name: FileSfx) {
+    const ctx = this.ctx;
+    const hit = this.buffers.get(name);
+    if (!ctx || !hit || hit.ctx !== ctx) {
+      this.preload();
+      return false;
+    }
+    const src = ctx.createBufferSource();
+    const g = ctx.createGain();
+    src.buffer = hit.buf;
+    g.gain.value = FILE_GAIN;
+    src.connect(g).connect(this.out(ctx));
+    src.start();
+    return true;
+  }
 
   setEnabled(on: boolean) {
     this.enabled = on;
@@ -121,10 +196,12 @@ export class Sfx {
         this.tone(880, 0, 0.12, { type: "square", gain: 0.12 });
         this.tone(1320, 0.12, 0.2, { type: "square", gain: 0.12 });
         break;
-      case "correct": // arpejo maior ascendente
+      case "correct": // arquivo (reserva: arpejo maior ascendente)
+        if (this.sample("correct")) break;
         [72, 76, 79, 84].forEach((n, i) => this.tone(NOTE(n), i * 0.09, 0.4, { type: "triangle", gain: 0.22 }));
         break;
-      case "wrong": // buzina de "errou!" (programa de auditório)
+      case "wrong": // arquivo (reserva: buzina de "errou!")
+        if (this.sample("wrong")) break;
         this.buzzer(SFX_LEN.wrong);
         break;
       case "tick": // tique-taque (o último segundo é mais agudo)

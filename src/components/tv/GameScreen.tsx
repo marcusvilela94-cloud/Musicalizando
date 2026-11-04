@@ -16,6 +16,7 @@ import {
   lateTaps,
   lockedTeams,
   lockLabel,
+  artistCredits,
   missingParts,
   ranking,
   recentDecision,
@@ -24,7 +25,7 @@ import {
   stagePoints,
   teamById,
 } from "@/lib/game";
-import { SFX_LEN, sharedSfx } from "@/lib/sfx";
+import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
 import type { TvCtx } from "./TvApp";
@@ -78,7 +79,11 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           setLoadMsg(null);
           const next = list.find((t) => t.round_no === roundNo + 1);
           if (next) audio.load(next.deezer_id).catch(() => {});
-          const offsets = getMode(currentRound(state)?.mode).pickOffsets(buffer.duration);
+          // "Em sequência": todos os trechos começam no início da prévia; "Alternando": pontos sorteados
+          const mode = getMode(currentRound(state)?.mode);
+          const offsets = state.room.settings.clipMode === "alternate"
+            ? mode.pickOffsets(buffer.duration)
+            : mode.stages.map(() => 0);
           await api.roundBegin(code, host, roundId, artists, offsets); // não faz nada se a rodada já abriu
           return;
         } catch (e) {
@@ -163,8 +168,9 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     if (!r.announced) {
       r.announced = true;
       // acerto já tocou o som de acerto; sem vencedor toca o som de revelação
-      if (!currentRound(state)?.winner_team_id) sfx.play("reveal");
-      delay = sfx.enabled ? Math.max(REVEAL_MUSIC_DELAY_MS, SFX_LEN.reveal * 1000) : 0;
+      const winner = !!currentRound(state)?.winner_team_id;
+      if (!winner) sfx.play("reveal");
+      delay = sfx.enabled ? Math.max(REVEAL_MUSIC_DELAY_MS, sfx.length(winner ? "correct" : "reveal") * 1000) : 0;
     }
     let handle: PlayHandle | null = null;
     const from = r.pos;
@@ -431,7 +437,7 @@ function RevealView({ state, round, ctx, contest }: { state: RoomState; round: R
       )}
       <div className="flex flex-1 flex-col gap-4 text-center lg:text-left">
         <p className="font-display text-6xl font-bold leading-tight">{r?.title}</p>
-        <p className="font-display text-4xl text-pink-300">{r?.artists?.join(", ") || r?.artist}</p>
+        <p className="font-display text-4xl text-pink-300">{r ? artistCredits(r) : ""}</p>
         {artistTeam || titleTeam ? (
           <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
             {titleTeam && titleTeam.id === artistTeam?.id ? (

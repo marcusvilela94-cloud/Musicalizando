@@ -95,6 +95,11 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             options={[["spoken", "Falada"], ["typed", "Digitada"]]}
             hint={settings.answerMode === "spoken" ? "O time fala em voz alta e o apresentador julga." : "O time digita no celular e o sistema confere."} />
         )}
+        <Option title="Trechos" value={settings.clipMode ?? "sequence"} onChange={(v) => update({ clipMode: v })}
+          options={[["sequence", "Em sequência"], ["alternate", "Alternando"]]}
+          hint={(settings.clipMode ?? "sequence") === "sequence"
+            ? "Todos os trechos começam do início da prévia e vão crescendo: 1s, 2s, 4s, 8s, 15s, 30s."
+            : "Cada trecho começa num ponto sorteado diferente da prévia; o último toca a prévia inteira."} />
         <Option title="Tempo de resposta do time" value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
           options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
         <Option title="Bloqueio após erro" value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}

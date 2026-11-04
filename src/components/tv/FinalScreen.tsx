@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { FinalControls } from "@/components/control/FinalControls";
 import { Logo, TeamChip } from "@/components/ui";
 import { textOn } from "@/lib/colors";
-import { formatSeconds, isHostStyle, matchStats, ranking } from "@/lib/game";
+import { artistCredits, formatSeconds, isHostStyle, matchStats, ranking } from "@/lib/game";
 import { sharedSfx } from "@/lib/sfx";
 import type { RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
@@ -90,7 +90,7 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           {stats.nobody.length ? (
             <ul>
               {stats.nobody.slice(0, 4).map((r) => (
-                <li key={r.id}>“{r.reveal?.title}” — {r.reveal?.artist}</li>
+                <li key={r.id}>“{r.reveal?.title}” — {r.reveal ? artistCredits(r.reveal) : ""}</li>
               ))}
               {stats.nobody.length > 4 && <li>e mais {stats.nobody.length - 4}</li>}
             </ul>

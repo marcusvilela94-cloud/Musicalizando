@@ -11,6 +11,7 @@ import {
   formatSeconds,
   lateTaps,
   lockInfo,
+  artistCredits,
   missingParts,
   ranking,
   recentDecision,
@@ -341,7 +342,7 @@ function RevealPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; r
           )}
           <div>
             <p className="font-display text-xl font-semibold">{round.reveal.title}</p>
-            <p className="text-white/70">{round.reveal.artist}</p>
+            <p className="text-white/70">{artistCredits(round.reveal)}</p>
           </div>
         </div>
       )}

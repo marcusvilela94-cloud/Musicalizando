@@ -9,6 +9,8 @@ export type Scoring = "artist_title" | "title"; // "Artista e música" | "Só a 
 export type AnswerMode = "spoken" | "typed"; // "Falada" | "Digitada"
 export type RoomStyle = "all" | "host"; // "Todos jogam" | "Com apresentador"
 export type SfxVolume = "low" | "medium" | "high";
+/** Trechos: "sequence" = todos do início da prévia; "alternate" = cada um num ponto sorteado. */
+export type ClipMode = "sequence" | "alternate";
 
 /** Bloqueio de um time depois de errar. started_at/until = null: aguardando a música voltar. */
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
@@ -27,6 +29,7 @@ export type RoomSettings = {
   lockSeconds: 5 | 10 | 15 | 20 | 30; // bloqueio após erro (conta só com a música tocando)
   sounds: boolean; // efeitos sonoros na TV
   sfxVolume?: SfxVolume; // volume dos efeitos (padrão "high")
+  clipMode?: ClipMode; // trechos (padrão "sequence")
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
