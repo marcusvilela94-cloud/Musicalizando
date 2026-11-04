@@ -136,6 +136,7 @@ await fails(rpc("npl_host_tracks", code, P(1)), "not_owner");
 
 // botão antes da rodada abrir
 assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "closed");
+assert.equal(await rpc("npl_host_answer", code, OWNER), null, "sem dúvida, sem resposta");
 await rpc("npl_round_begin", code, OWNER, R, ["Participação Especial"]);
 await rpc("npl_advance_stage", code, OWNER, R, 1); // estágio 2 = 80 pts
 
@@ -209,6 +210,8 @@ st = await rpc("npl_get_state", code);
 assert.equal(st.rounds[1].status, "doubt");
 assert.equal((await rpc("npl_buzz", code, P(1), R)).reason, "taken");
 await fails(rpc("npl_judge", code, P(1), rb.attempt_id, true), "not_owner");
+assert.equal((await rpc("npl_host_answer", code, OWNER)).title, "Musica Numero 2");
+await fails(rpc("npl_host_answer", code, P(1)), "not_owner");
 assert.equal(await rpc("npl_judge", code, OWNER, rb.attempt_id, true), "correct");
 st = await rpc("npl_get_state", code);
 assert.equal(st.teams.find((t) => t.id === B).score, 40 + 150);

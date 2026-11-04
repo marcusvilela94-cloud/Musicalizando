@@ -852,3 +852,27 @@ begin
 end $$;
 
 revoke execute on function public.npl_player_json(public.npl_players) from public, anon, authenticated;
+
+-- Resposta certa da rodada atual, só para o dono e só na "zona de dúvida"
+-- (a tela principal mostra "Valeu ou não valeu?" com a digitada e a certa).
+create or replace function public.npl_host_answer(p_code text, p_owner_token text)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = public
+as $$
+declare
+  r public.npl_rooms;
+  v_round public.npl_rounds;
+  v_track public.npl_tracks;
+begin
+  select * into r from public.npl_rooms where code = btrim(p_code);
+  if not found then raise exception 'npl:room_not_found'; end if;
+  perform public.npl_require_owner(r, p_owner_token);
+  select * into v_round from public.npl_rounds
+   where room_id = r.id and match_no = r.match_no and round_no = r.round_no;
+  if not found or v_round.status <> 'doubt' then return null; end if;
+  select * into v_track from public.npl_tracks
+   where room_id = r.id and match_no = r.match_no and position = r.round_no;
+  return jsonb_build_object('title', v_track.title, 'artist', v_track.artist, 'artists', v_track.artists);
+end $$;
