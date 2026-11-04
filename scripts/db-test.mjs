@@ -478,6 +478,186 @@ await rpc("npl_join", code3, P(5), "Eva");
 await rpc("npl_join", code3, P(6), "Fábio");
 await rpc("npl_start_match", code3, OWNER, tracks);
 
+// ---------- modo Leilão (3 times, todos jogam, digitada) ----------
+{
+  const { code: c4 } = await rpc("npl_create_room", OWNER, { mode: "auction", teamCount: 3, answerSeconds: 10, penalty: 50 });
+  let s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.room.settings.mode, "auction");
+  await rpc("npl_update_settings", c4, OWNER, { modeSelection: "random", modePool: ["classic", "auction", "xx", "auction"] });
+  assert.deepEqual((await rpc("npl_get_state", c4)).room.settings.modePool, ["classic", "auction"], "só modos conhecidos");
+  await rpc("npl_update_settings", c4, OWNER, { mode: "bogus", modeSelection: "fixed", modePool: [] });
+  assert.equal((await rpc("npl_get_state", c4)).room.settings.mode, "classic");
+  await rpc("npl_update_settings", c4, OWNER, { mode: "auction", modePool: ["auction"] });
+  const [pa, pb, pc] = [P(8), P(9), P(10)];
+  await rpc("npl_join", c4, pa, "Ana");
+  await rpc("npl_join", c4, pb, "Bia");
+  await rpc("npl_join", c4, pc, "Cris");
+  s4 = await rpc("npl_get_state", c4);
+  const [TA, TB, TC] = s4.teams.map((t) => t.id);
+  await rpc("npl_set_team", c4, pa, TA);
+  await rpc("npl_set_team", c4, pb, TB);
+  await rpc("npl_set_team", c4, pc, TC);
+  await rpc("npl_start_match", c4, OWNER, tracks);
+  s4 = await rpc("npl_get_state", c4);
+  let R4 = s4.rounds[0].id;
+  assert.equal(s4.rounds[0].mode, "auction");
+  const meta = { genre: "Sertanejo", year: 2004, compilation: false };
+  await rpc("npl_round_begin", c4, OWNER, R4, ["Convidado"], [], meta);
+  s4 = await rpc("npl_get_state", c4);
+  let au = s4.rounds[0].auction;
+  assert.equal(au.hint, "artist", "primeira rodada: dica artista");
+  assert.equal(au.artist, "Chitãozinho & Xororó");
+  assert.ok(au.artists.includes("Convidado"));
+  assert.equal(au.genre, null);
+  assert.deepEqual(au.order, [TA, TB, TC]);
+  assert.equal(au.turn, TA);
+  const bid = (tok, secs) => rpc("npl_auction_bid", c4, tok, R4, secs);
+  const startNow = async () =>
+    db.query(`update npl_rounds set auction = auction || jsonb_build_object('starts_at', clock_timestamp() - interval '60 seconds') where id = $1`, [R4]);
+  assert.equal((await bid(pa, 15)).reason, "not_started", "dica aparece antes dos lances");
+  await startNow();
+  assert.equal((await rpc("npl_buzz", c4, pa, R4)).reason, "auction");
+  assert.equal((await rpc("npl_play", c4, OWNER, R4, 1, false)).ok, false, "sem trechos do clássico");
+  assert.equal((await bid(pb, 15)).reason, "not_your_turn");
+  assert.equal((await bid(pa, 20)).reason, "bad_bid");
+  assert.equal((await bid(pa, 0)).reason, "bad_bid");
+  assert.equal((await bid(pa, 15)).ok, true);
+  assert.equal((await bid(pb, 15)).reason, "bad_bid", "tem que ser menor");
+  assert.equal((await bid(pb, 12)).ok, true);
+  assert.equal((await bid(pc, null)).ok, true, "C: pode tocar");
+  au = (await rpc("npl_get_state", c4)).rounds[0].auction;
+  assert.equal(au.turn, TA, "volta para A (B tem o menor lance)");
+  assert.equal(au.phase, "bidding");
+  assert.equal((await bid(pa, null)).phase, "proving", "todos os outros disseram pode tocar");
+  s4 = await rpc("npl_get_state", c4);
+  au = s4.rounds[0].auction;
+  assert.deepEqual(au.queue, [{ team: TB, secs: 12 }, { team: TA, secs: 15 }, { team: TC, secs: 20 }]);
+  assert.equal(au.winner, TB);
+  assert.equal(au.log.length, 4);
+  // prova: B ouve 12 s
+  await fails(rpc("npl_auction_play", c4, pa, R4, 0), "not_owner");
+  assert.equal((await rpc("npl_auction_play", c4, OWNER, R4, 1)).ok, false, "posição errada");
+  const play0 = await rpc("npl_auction_play", c4, OWNER, R4, 0);
+  assert.equal(play0.ok, true);
+  assert.equal((await rpc("npl_auction_play", c4, OWNER, R4, 0)).ok, false, "uma vez só");
+  s4 = await rpc("npl_get_state", c4);
+  let att = s4.attempts.find((x) => x.id === play0.attempt_id);
+  assert.equal(att.team_id, TB);
+  assert.equal(att.stage, 12);
+  assert.ok(Math.abs(Date.parse(att.deadline) - s4.server_now - 22000) < 2000, "prazo = 12 s de trecho + 10 s de resposta");
+  assert.equal(s4.rounds[0].status, "answering");
+  assert.equal((await rpc("npl_submit_answer", c4, pa, play0.attempt_id, "", "Evidências")).reason, "not_your_team");
+  // B erra (o artista não vale nesta rodada): sem penalidade, vez passa para A
+  let an = await rpc("npl_submit_answer", c4, pb, play0.attempt_id, "Chitãozinho & Xororó", "Outra Música Qualquer");
+  assert.equal(an.result, "wrong");
+  assert.equal(an.points, 0, "sem penalidade no leilão");
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.rounds[0].status, "playing");
+  assert.equal(s4.rounds[0].auction.qidx, 1);
+  assert.equal(s4.attempts.find((x) => x.id === play0.attempt_id).answer_artist, null, "artista não é conferido");
+  // A: "Quase!" e depois acerta -> 100 fixos
+  const play1 = await rpc("npl_auction_play", c4, OWNER, R4, 1);
+  assert.equal((await rpc("npl_submit_answer", c4, pa, play1.attempt_id, "", "Evixxxcias")).result, "almost");
+  an = await rpc("npl_submit_answer", c4, pa, play1.attempt_id, "", "Evidências");
+  assert.equal(an.result, "correct");
+  assert.equal(an.points, 100);
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.rounds[0].status, "revealed");
+  assert.equal(s4.rounds[0].title_team_id, TA);
+  assert.equal(s4.teams.find((t) => t.id === TA).score, 100);
+  assert.equal(s4.teams.find((t) => t.id === TB).score, 0);
+
+  // rodada 2: dica gênero/ano, quem abre gira (B); ninguém dá lance; turno vencido = "Pode tocar!"
+  await rpc("npl_next_round", c4, OWNER, 1);
+  s4 = await rpc("npl_get_state", c4);
+  R4 = s4.rounds[1].id;
+  await rpc("npl_round_begin", c4, OWNER, R4, [], [], meta);
+  s4 = await rpc("npl_get_state", c4);
+  au = s4.rounds[1].auction;
+  assert.equal(au.hint, "genre");
+  assert.equal(au.genre, "Sertanejo");
+  assert.equal(au.year, 2004);
+  assert.equal(au.artist, null, "artista escondido");
+  assert.equal(au.artists, null);
+  assert.deepEqual(au.order, [TB, TC, TA], "rodízio");
+  await startNow();
+  assert.equal(await rpc("npl_tick", c4), false);
+  // pausa congela o turno
+  await rpc("npl_pause", c4, OWNER, true);
+  assert.equal((await bid(pb, 10)).reason, "paused");
+  await db.query("update npl_rooms set paused_at = paused_at - interval '10 seconds' where code = $1", [c4]);
+  await rpc("npl_pause", c4, OWNER, false);
+  const au2 = (await rpc("npl_get_state", c4)).rounds[1].auction;
+  assert.ok(Date.parse(au2.turn_deadline) - Date.parse(au.turn_deadline) >= 9500, "turno andou junto com a pausa");
+  await db.query(`update npl_rounds set auction = auction || jsonb_build_object('turn_deadline', clock_timestamp() - interval '2 seconds') where id = $1`, [R4]);
+  assert.equal(await rpc("npl_tick", c4), true);
+  au = (await rpc("npl_get_state", c4)).rounds[1].auction;
+  assert.equal(au.turn, TC, "tempo esgotado conta como pode tocar");
+  assert.equal((await bid(pc, null)).ok, true);
+  assert.equal((await bid(pa, null)).phase, "proving");
+  au = (await rpc("npl_get_state", c4)).rounds[1].auction;
+  assert.deepEqual(au.queue, [{ team: TB, secs: 20 }, { team: TC, secs: 20 }, { team: TA, secs: 20 }], "sem lances: todos 20 s no rodízio");
+  assert.equal(au.winner, null);
+  // B: tempo esgotado -> C; C acerta o artista (vale) -> 100
+  const pl0 = await rpc("npl_auction_play", c4, OWNER, R4, 0);
+  await db.query("update npl_attempts set deadline = clock_timestamp() - interval '5 seconds' where id = $1", [pl0.attempt_id]);
+  assert.equal(await rpc("npl_tick", c4), true);
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.attempts.find((x) => x.id === pl0.attempt_id).status, "timeout");
+  assert.equal(s4.rounds[1].auction.qidx, 1);
+  const pl1 = await rpc("npl_auction_play", c4, OWNER, R4, 1);
+  assert.equal((await rpc("npl_submit_answer", c4, pc, pl1.attempt_id, "", "Musica Numero 2")).reason, "empty", "música não vale aqui");
+  an = await rpc("npl_submit_answer", c4, pc, pl1.attempt_id, "Artista 2", "");
+  assert.equal(an.result, "correct");
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.rounds[1].artist_team_id, TC);
+  assert.equal(s4.rounds[1].found.artist, "Artista 2");
+  assert.equal(s4.teams.find((t) => t.id === TC).score, 100);
+
+  // rodada 3: volta a dica artista; lance de 1 s fecha na hora; todos erram -> revela sem pontos
+  await rpc("npl_next_round", c4, OWNER, 2);
+  s4 = await rpc("npl_get_state", c4);
+  R4 = s4.rounds[2].id;
+  await rpc("npl_round_begin", c4, OWNER, R4, [], [], meta);
+  au = (await rpc("npl_get_state", c4)).rounds[2].auction;
+  assert.equal(au.hint, "artist");
+  assert.equal(au.turn, TC);
+  await startNow();
+  assert.equal((await bid(pc, 1)).phase, "proving", "1 s ninguém cobre");
+  au = (await rpc("npl_get_state", c4)).rounds[2].auction;
+  assert.deepEqual(au.queue, [{ team: TC, secs: 1 }, { team: TA, secs: 20 }, { team: TB, secs: 20 }]);
+  for (let i = 0; i < 3; i++) {
+    const pl = await rpc("npl_auction_play", c4, OWNER, R4, i);
+    await rpc("npl_end_turn", c4, OWNER, pl.attempt_id);
+  }
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.rounds[2].status, "revealed");
+  assert.equal(s4.rounds[2].winner_team_id, null);
+
+  // rodada 4: queria gênero, mas é coletânea -> dica artista; falada: "artista certo" não vale
+  await rpc("npl_next_round", c4, OWNER, 3);
+  s4 = await rpc("npl_get_state", c4);
+  R4 = s4.rounds[3].id;
+  await rpc("npl_round_begin", c4, OWNER, R4, [], [], { ...meta, compilation: true });
+  au = (await rpc("npl_get_state", c4)).rounds[3].auction;
+  assert.equal(au.hint, "artist", "coletânea: dica artista");
+  await startNow();
+  await bid(pa, 5);
+  await bid(pb, null);
+  assert.equal((await bid(pc, null)).phase, "proving");
+  const pl = await rpc("npl_auction_play", c4, OWNER, R4, 0);
+  assert.equal(await rpc("npl_decide", c4, OWNER, pl.attempt_id, true, false), "wrong");
+  const pl2 = await rpc("npl_auction_play", c4, OWNER, R4, 1);
+  assert.equal(await rpc("npl_decide", c4, OWNER, pl2.attempt_id, false, true), "correct");
+  // contestar: o primeiro na verdade acertou -> os 100 vão para ele
+  await rpc("npl_override_parts", c4, OWNER, pl.attempt_id, false, true);
+  s4 = await rpc("npl_get_state", c4);
+  assert.equal(s4.rounds[3].title_team_id, TA);
+  assert.equal(s4.teams.find((t) => t.id === TA).score, 200);
+  assert.equal(s4.teams.find((t) => t.id === TB).score, 0);
+  console.log("ok leilão");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

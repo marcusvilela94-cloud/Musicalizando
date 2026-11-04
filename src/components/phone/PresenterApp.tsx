@@ -12,16 +12,15 @@ import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import {
-  artistPoints,
   attemptParts,
   currentRound,
   lockedTeams,
   lockLabel,
   artistCredits,
   missingParts,
+  partPoints,
   ranking,
   roundAttempts,
-  stagePoints,
   teamById,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
@@ -100,7 +99,9 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
 
   if (!round) return <Spinner label="Preparando…" />;
   const ans = answer && answer.round_id === round.id ? answer : null;
-  const stage = getMode(round.mode).stages[round.stage - 1];
+  const mode = getMode(round.mode);
+  const stage = mode.stages[round.stage - 1];
+  const ModePanel = mode.PresenterRoundView;
   const locks = lockedTeams(state, round, now);
 
   return (
@@ -119,6 +120,8 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
       ) : (
         <AnswerCard state={state} round={round} answer={ans} />
       )}
+
+      {ModePanel && ["playing", "answering", "doubt"].includes(round.status) && <ModePanel state={state} round={round} now={now} />}
 
       {locks.length > 0 && round.status === "playing" && (
         <div className="flex flex-wrap gap-2">
@@ -172,7 +175,6 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
   const left = attempt.deadline ? Math.max(0, Date.parse(attempt.deadline) - now) : null;
   const spoken = state.room.settings.answerMode === "spoken";
   const need = missingParts(state, round);
-  const pts = stagePoints(round);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const decide = async (artist: boolean, title: boolean) => {
@@ -197,13 +199,13 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
       {spoken ? (
         <div className="flex flex-wrap gap-2">
           {need.artist && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo +{artistPoints(pts)}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo +{partPoints(round, "artist")}</Button>
           )}
           {need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>🎵 Música certa +{pts}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>🎵 Música certa +{partPoints(round, "title")}</Button>
           )}
           {need.artist && need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois +{pts + artistPoints(pts)}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois +{partPoints(round, "artist") + partPoints(round, "title")}</Button>
           )}
           <Button variant="danger" className={btn} disabled={busy} onClick={() => decide(false, false)}>❌ Errou</Button>
         </div>

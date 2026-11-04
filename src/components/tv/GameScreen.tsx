@@ -28,6 +28,8 @@ import {
 import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
+import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
+import type { TvRoundViewProps } from "@/modes/types";
 import type { TvCtx } from "./TvApp";
 
 /** A música da revelação espera o efeito sonoro terminar. */
@@ -73,7 +75,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           const list = await api.hostTracks(code, host);
           const cur = list.find((t) => t.round_no === roundNo);
           if (!cur) throw new Error("Música não encontrada");
-          const { buffer, artists } = await audio.load(cur.deezer_id);
+          const { buffer, artists, meta } = await audio.load(cur.deezer_id);
           if (!alive) return;
           setLoaded({ roundId, buffer });
           setLoadMsg(null);
@@ -84,7 +86,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           const offsets = state.room.settings.clipMode === "alternate"
             ? mode.pickOffsets(buffer.duration)
             : mode.stages.map(() => 0);
-          await api.roundBegin(code, host, roundId, artists, offsets); // não faz nada se a rodada já abriu
+          await api.roundBegin(code, host, roundId, artists, offsets, meta); // não faz nada se a rodada já abriu
           return;
         } catch (e) {
           if (!alive) return;
@@ -106,7 +108,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   // ---- efeitos sonoros ----
   // "apertou!" quando um time ganha a vez
   const lastBuzz = useRef<string | null>(null);
-  const openAttemptId = attempt?.status === "open" ? attempt.id : null;
+  // (no leilão a vez abre junto com o "Tocar": nada de parar o som)
+  const openAttemptId = attempt?.status === "open" && !isAuction(round) ? attempt.id : null;
   useEffect(() => {
     if (!openAttemptId || lastBuzz.current === openAttemptId) return;
     lastBuzz.current = openAttemptId;
@@ -154,6 +157,40 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     const t = setTimeout(() => api.tick(code).catch(() => {}), Math.max(0, ms));
     return () => clearTimeout(t);
   }, [deadline, paused, code, serverNow]);
+
+  // ---- leilão: martelo a cada lance, tique-taque no fim do turno, turno vencido ----
+  const auc = auctionOf(round);
+  const bidCount = auc?.log.length ?? 0;
+  const lastBid = auc ? lastAction(auc) : null;
+  const seenBid = useRef<{ roundId: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!roundId || !auc) return;
+    if (seenBid.current?.roundId !== roundId) {
+      seenBid.current = { roundId, n: bidCount }; // ao abrir a tela não toca nada antigo
+      return;
+    }
+    if (bidCount <= seenBid.current.n) return;
+    seenBid.current.n = bidCount;
+    if (lastBid) sfx.play(lastBid.secs !== null ? "bid" : "pass");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando entra um lance novo
+  }, [bidCount, roundId, sfx]);
+  const turnDeadline = auc?.phase === "bidding" ? auc.turn_deadline : null;
+  const lastTurnTick = useRef<number | null>(null);
+  useEffect(() => {
+    if (!turnDeadline || paused) return;
+    const id = setInterval(() => {
+      const left = Math.ceil((Date.parse(turnDeadline) - serverNow()) / 1000);
+      if (left >= 1 && left <= 5 && lastTurnTick.current !== left) {
+        lastTurnTick.current = left;
+        sfx.play("tick", { last: left === 1 });
+      }
+    }, 100);
+    const t = setTimeout(() => api.tick(code).catch(() => {}), Math.max(0, Date.parse(turnDeadline) + 700 - serverNow()));
+    return () => {
+      clearInterval(id);
+      clearTimeout(t);
+    };
+  }, [turnDeadline, paused, serverNow, sfx, code]);
 
   // ---- revelação: efeito sonoro e depois a música (pausa para e continua de onde parou) ----
   const reveal = useRef<{ roundId: string; pos: number; done: boolean; announced: boolean } | null>(null);
@@ -218,7 +255,9 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   }, [onKey]);
 
   if (!round) return <div className="flex flex-1 items-center justify-center"><Spinner label="Preparando…" /></div>;
-  const Engine = getMode(round.mode).TvEngine;
+  const mode = getMode(round.mode);
+  const Engine = mode.TvEngine;
+  const RoundScreen = mode.TvRoundView ?? RoundView;
   const flash = recentDecision(state, round, now);
 
   return (
@@ -229,7 +268,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       <div className="flex flex-1 flex-col items-center justify-center">
         {round.status === "loading" && <Spinner label={loadMsg ?? "Preparando a música…"} />}
         {(round.status === "playing" || round.status === "answering" || round.status === "doubt") && (
-          <RoundView state={state} round={round} attempt={attempt} now={now} clipPlaying={clipPlaying} />
+          <RoundScreen state={state} round={round} attempt={attempt} now={now} clipPlaying={clipPlaying} />
         )}
         {round.status === "revealed" && <RevealView state={state} round={round} ctx={ctx} contest={!hostStyle} />}
         {round.status === "scoreboard" && <ScoreboardView state={state} round={round} />}
@@ -332,7 +371,7 @@ function FoundParts({ state, round }: { state: RoomState; round: Round }) {
   );
 }
 
-function RoundView({ state, round, attempt, now, clipPlaying }: { state: RoomState; round: Round; attempt?: Attempt; now: number; clipPlaying: boolean }) {
+function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps) {
   const locks = lockedTeams(state, round, now);
   return (
     <div className="flex w-full flex-col items-center gap-6">

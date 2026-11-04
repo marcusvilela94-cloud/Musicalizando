@@ -3,9 +3,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import { currentAttempt, currentRound } from "@/lib/game";
+import { currentAttempt, currentRound, teamById } from "@/lib/game";
 import type { Attempt, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
+import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
 
 /** Ações de quem comanda a partida (TV no "Todos jogam" ou celular do apresentador). */
 export function useGameActions(state: RoomState, code: string, token: string) {
@@ -17,15 +18,18 @@ export function useGameActions(state: RoomState, code: string, token: string) {
   const st = round?.status;
   const open = !!round && round.status === "playing" && !paused;
   const lastStage = !!round && round.stage >= stages.length;
+  // Leilão: "Tocar" só na prova em fila, uma vez por time
+  const auction = auctionOf(round);
+  const auctionPlay = !!auction && auction.phase === "proving" && !entryPlayed(auction);
 
   const run = (fn: () => Promise<unknown>) => {
     setError(null);
     fn().catch((e) => setError(friendlyError(e)));
   };
   const can = {
-    play: open,
-    next: open && !lastStage,
-    reveal: open && lastStage,
+    play: auction ? open && auctionPlay : open,
+    next: open && !auction && !lastStage,
+    reveal: open && !auction && lastStage,
     pause: !!round && state.room.phase === "playing",
     skip: !!round && ["loading", "playing", "answering", "doubt"].includes(round.status),
     endTurn: attempt?.status === "open",
@@ -33,7 +37,11 @@ export function useGameActions(state: RoomState, code: string, token: string) {
     nextRound: st === "revealed" || st === "scoreboard",
   };
   const actions = {
-    play: () => can.play && run(() => api.play(code, token, round!.id, round!.stage, false)),
+    play: () =>
+      can.play &&
+      run(() =>
+        auction ? api.auctionPlay(code, token, round!.id, auction.qidx) : api.play(code, token, round!.id, round!.stage, false),
+      ),
     next: () => can.next && run(() => api.play(code, token, round!.id, round!.stage, true)),
     reveal: () => can.reveal && run(() => api.endRound(code, token, round!.id)),
     togglePause: () => can.pause && run(() => api.pause(code, token, !paused)),
@@ -45,14 +53,14 @@ export function useGameActions(state: RoomState, code: string, token: string) {
       if (window.confirm("Encerrar a partida agora?")) run(() => api.finishMatch(code, token));
     },
   };
-  return { round, attempt, paused, stages, can, actions, error, setError, run };
+  return { round, attempt, paused, stages, auction, can, actions, error, setError, run };
 }
 
 export type GameActions = ReturnType<typeof useGameActions>;
 
 /** Botões de controle. `size="tv"` = botões grandes com a dica do atalho de teclado. */
 export function GameControls({ g, state, size = "phone" }: { g: GameActions; state: RoomState; size?: "tv" | "phone" }) {
-  const { round, can, actions, paused, stages } = g;
+  const { round, can, actions, paused, stages, auction } = g;
   if (!round) return null;
   const tv = size === "tv";
   const k = (key: string) => (tv ? <kbd className="ml-2 rounded bg-black/25 px-1.5 text-sm opacity-70">{key}</kbd> : null);
@@ -64,7 +72,17 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
   return (
     <div className="flex flex-col gap-2">
       <div className={`flex flex-wrap gap-2 ${tv ? "justify-center" : ""}`}>
-        {round.status === "playing" && (
+        {round.status === "playing" && auction && (
+          auction.phase === "bidding" ? (
+            <p className={`font-display text-white/70 ${tv ? "text-2xl" : "text-lg text-center w-full"}`}>🔨 Leilão em andamento nos celulares…</p>
+          ) : (
+            <Button className={big} disabled={!can.play} onClick={actions.play}>
+              ▶ Tocar{queueEntry(auction) ? ` (${teamById(state, queueEntry(auction)!.team)?.name ?? "?"}: ${queueEntry(auction)!.secs}s)` : ""}
+              {k("espaço")}
+            </Button>
+          )
+        )}
+        {round.status === "playing" && !auction && (
           <>
             <Button className={big} disabled={!can.play} onClick={actions.play}>
               {round.played_stage === round.stage ? "🔁 Repetir" : "▶ Tocar"}
@@ -127,17 +145,21 @@ export function OverrideButtons({
   token: string;
   onError: (m: string) => void;
 }) {
-  const both = state.room.settings.scoring === "artist_title";
+  // Leilão: só uma parte vale (a da dica)
+  const hint = auctionOf(state.rounds.find((r) => r.id === attempt.round_id))?.hint;
+  const both = !hint && state.room.settings.scoring === "artist_title";
   const art = attempt.artist_result === "ok";
   const tit = attempt.title_result === "ok";
   const set = (a: boolean, t: boolean) => api.overrideParts(code, token, attempt.id, a, t).catch((e) => onError(friendlyError(e)));
   const opts: [string, boolean, boolean][] = both
     ? [["Só artista", true, false], ["Só música", false, true], ["Os dois", true, true], ["Não valeu", false, false]]
-    : [["Valeu", false, true], ["Não valeu", false, false]];
+    : hint === "genre"
+      ? [["Valeu", true, false], ["Não valeu", false, false]]
+      : [["Valeu", false, true], ["Não valeu", false, false]];
   return (
     <div className="flex flex-wrap gap-1">
       {opts.map(([label, a, t]) => {
-        const current = (both ? a === art : true) && t === tit;
+        const current = (both || hint ? a === art : true) && t === tit;
         return (
           <button
             key={label}

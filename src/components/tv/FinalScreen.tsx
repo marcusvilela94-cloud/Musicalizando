@@ -66,26 +66,53 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       )}
 
       <div className="grid w-full max-w-5xl gap-4 md:grid-cols-3">
-        <Stat title="⚡ Acerto mais rápido">
-          {stats.fastest?.team ? (
-            <>
-              <TeamChip team={stats.fastest.team} /> em “{stats.fastest.round?.reveal?.title}”
-              <br />
-              com {fastestSecs ?? "?"}s de música ({formatSeconds(stats.fastest.attempt.ms_into_stage)}s após o trecho começar)
-            </>
-          ) : (
-            "Ninguém acertou nada!"
-          )}
-        </Stat>
-        <Stat title="🏴‍☠️ Mais roubos">
-          {stats.topSteal?.team ? (
-            <>
-              <TeamChip team={stats.topSteal.team} /> com {stats.topSteal.count} roubo{stats.topSteal.count > 1 ? "s" : ""}
-            </>
-          ) : (
-            "Nenhum roubo"
-          )}
-        </Stat>
+        {stats.hadAuction && (
+          <>
+            <Stat title="🔨 Lance mais ousado">
+              {stats.boldest?.team ? (
+                <>
+                  <TeamChip team={stats.boldest.team} /> acertou com só <b>{stats.boldest.secs}s</b>
+                  <br />em “{stats.boldest.round?.reveal?.title}”
+                </>
+              ) : (
+                "Ninguém acertou no leilão"
+              )}
+            </Stat>
+            <Stat title="👑 Mais leilões vencidos">
+              {stats.topAuction ? (
+                <>
+                  {stats.topAuction.teams.map((t) => <TeamChip key={t.id} team={t} className="mr-1" />)} com {stats.topAuction.count} leil{stats.topAuction.count > 1 ? "ões" : "ão"}
+                </>
+              ) : (
+                "Ninguém deu lance"
+              )}
+            </Stat>
+          </>
+        )}
+        {stats.hadClassic && (
+          <>
+            <Stat title="⚡ Acerto mais rápido">
+              {stats.fastest?.team ? (
+                <>
+                  <TeamChip team={stats.fastest.team} /> em “{stats.fastest.round?.reveal?.title}”
+                  <br />
+                  com {fastestSecs ?? "?"}s de música ({formatSeconds(stats.fastest.attempt.ms_into_stage)}s após o trecho começar)
+                </>
+              ) : (
+                "Ninguém acertou nada!"
+              )}
+            </Stat>
+            <Stat title="🏴‍☠️ Mais roubos">
+              {stats.topSteal?.team ? (
+                <>
+                  <TeamChip team={stats.topSteal.team} /> com {stats.topSteal.count} roubo{stats.topSteal.count > 1 ? "s" : ""}
+                </>
+              ) : (
+                "Nenhum roubo"
+              )}
+            </Stat>
+          </>
+        )}
         <Stat title="🙈 Ninguém acertou">
           {stats.nobody.length ? (
             <ul>

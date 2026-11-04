@@ -1,16 +1,33 @@
-import { getMode } from "@/modes";
+// Sem importar o registro de modos (src/modes): as telas dos modos usam este arquivo.
+import { CLASSIC_STAGES } from "@/modes/classic/stages";
+import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
 import type { Attempt, RoomState, Round, Team } from "./types";
 
-/** Partes que ainda faltam descobrir nesta rodada. */
+/**
+ * Partes que ainda faltam descobrir nesta rodada (= o que o time pode responder).
+ * Leilão: dica "artist" -> só a música; dica "genre" -> só o artista.
+ */
 export function missingParts(s: RoomState, r: Round) {
+  if (r.mode === "auction") {
+    const hint = r.auction?.hint;
+    return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
+  }
   const artist = s.room.settings.scoring === "artist_title" && !r.found?.artist;
   const title = !r.found?.title;
   return { artist, title };
 }
 
-/** Pontos do estágio atual (= valor da música). Artista vale metade. */
-export const stagePoints = (r: Round) => getMode(r.mode).stages[Math.max(0, r.stage - 1)]?.points ?? 0;
+/** Pontos do estágio atual (= valor da música). Artista vale metade. Leilão: 100 fixos. */
+export const stagePoints = (r: Round) =>
+  r.mode === "auction" ? AUCTION_POINTS : CLASSIC_STAGES[Math.max(0, r.stage - 1)]?.points ?? 0;
 export const artistPoints = (pts: number) => Math.round(pts * 0.5);
+
+/** Quanto vale acertar cada parte agora. */
+export function partPoints(r: Round, part: "artist" | "title") {
+  if (r.mode === "auction") return AUCTION_POINTS;
+  const pts = stagePoints(r);
+  return part === "artist" ? artistPoints(pts) : pts;
+}
 
 /** "artista", "música", "artista e música" ou "" (o que a tentativa acertou). */
 export function attemptParts(a: Attempt) {
@@ -104,17 +121,39 @@ export function roundDelta(s: RoomState, r: Round | null) {
 
 /** Estatísticas da partida para a tela final. */
 export function matchStats(s: RoomState) {
+  const roundOf = (a: Attempt) => s.rounds.find((r) => r.id === a.round_id);
   const correct = s.attempts.filter((a) => a.kind === "turn" && a.status === "correct");
-  const fastest = [...correct].sort((a, b) => a.stage - b.stage || a.ms_into_stage - b.ms_into_stage)[0];
+  const classicCorrect = correct.filter((a) => roundOf(a)?.mode !== "auction");
+  const fastest = [...classicCorrect].sort((a, b) => a.stage - b.stage || a.ms_into_stage - b.ms_into_stage)[0];
   const steals = new Map<string, number>();
-  for (const a of correct) if (a.steal && a.team_id) steals.set(a.team_id, (steals.get(a.team_id) ?? 0) + 1);
+  for (const a of classicCorrect) if (a.steal && a.team_id) steals.set(a.team_id, (steals.get(a.team_id) ?? 0) + 1);
   const topSteal = [...steals.entries()].sort((a, b) => b[1] - a[1])[0];
   const nobody = s.rounds.filter((r) => r.reveal && !r.winner_team_id);
+
+  // Leilão: "Lance mais ousado" (menor lance que acertou; attempt.stage = segundos do lance)
+  // e "Mais leilões vencidos" (quem ficou com o menor lance).
+  const auctionRounds = s.rounds.filter((r) => auctionOf(r));
+  const boldest = correct
+    .filter((a) => roundOf(a)?.mode === "auction")
+    .sort((a, b) => a.stage - b.stage || Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+  const wins = new Map<string, number>();
+  for (const r of auctionRounds) {
+    const w = auctionOf(r)?.winner;
+    if (w) wins.set(w, (wins.get(w) ?? 0) + 1);
+  }
+  const topWins = [...wins.entries()].sort((a, b) => b[1] - a[1]);
   return {
-    fastest: fastest
-      ? { team: teamById(s, fastest.team_id), round: s.rounds.find((r) => r.id === fastest.round_id), attempt: fastest }
-      : null,
+    fastest: fastest ? { team: teamById(s, fastest.team_id), round: roundOf(fastest), attempt: fastest } : null,
     topSteal: topSteal ? { team: teamById(s, topSteal[0]), count: topSteal[1] } : null,
     nobody,
+    hadClassic: s.rounds.some((r) => r.mode !== "auction"),
+    hadAuction: auctionRounds.length > 0,
+    boldest: boldest ? { team: teamById(s, boldest.team_id), round: roundOf(boldest), secs: boldest.stage } : null,
+    topAuction: topWins[0]
+      ? {
+          teams: topWins.filter(([, n]) => n === topWins[0][1]).map(([id]) => teamById(s, id)).filter(Boolean) as Team[],
+          count: topWins[0][1],
+        }
+      : null,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 // Wrappers das RPCs npl_* (únicas escritas permitidas no banco).
 import { supabase } from "./supabase";
-import type { PickedTrack, RoomSettings, RoomState } from "./types";
+import type { PickedTrack, RoomSettings, RoomState, TrackMeta } from "./types";
 
 type Listener = (kind: string, extra?: Record<string, unknown>) => void;
 let afterMutation: Listener | null = null;
@@ -51,13 +51,31 @@ export const api = {
   // partida
   startMatch: (code: string, owner: string, tracks: PickedTrack[]) =>
     call<{ match_no: number; total_rounds: number }>("npl_start_match", { p_code: code, p_owner_token: owner, p_tracks: tracks }),
-  roundBegin: (code: string, host: string, roundId: string, artists: string[], offsets: number[]) =>
+  /** meta = gênero/ano do álbum (dica do Leilão; ignorado no clássico). */
+  roundBegin: (code: string, host: string, roundId: string, artists: string[], offsets: number[], meta: TrackMeta | null) =>
     call<unknown>("npl_round_begin", {
       p_code: code,
       p_owner_token: host,
       p_round_id: roundId,
       p_artists: artists,
       p_offsets: offsets,
+      p_meta: meta ?? {},
+    }),
+  /** Leilão: lance de `secs` segundos, ou "Pode tocar!" (secs = null). */
+  auctionBid: (code: string, token: string, roundId: string, secs: number | null) =>
+    call<{ ok: boolean; reason?: string; phase?: string; low?: number }>("npl_auction_bid", {
+      p_code: code,
+      p_token: token,
+      p_round_id: roundId,
+      p_secs: secs,
+    }),
+  /** Leilão: "Tocar" o trecho do time na posição `idx` da fila (uma vez só). */
+  auctionPlay: (code: string, owner: string, roundId: string, idx: number) =>
+    call<{ ok: boolean; attempt_id?: string }>("npl_auction_play", {
+      p_code: code,
+      p_owner_token: owner,
+      p_round_id: roundId,
+      p_idx: idx,
     }),
   /** Tocar/Repetir (advance=false) ou Próximo trecho (advance=true). */
   play: (code: string, owner: string, roundId: string, stage: number, advance: boolean) =>
@@ -160,5 +178,7 @@ export const deezer = {
       body: JSON.stringify({ sources, count }),
     }),
   track: (id: number | string) =>
-    getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),
+    getJson<{ id: string; preview: string; title: string; artist: string; artists: string[]; meta?: TrackMeta }>(
+      `/api/deezer/track/${id}`,
+    ),
 };

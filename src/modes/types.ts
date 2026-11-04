@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
+import type { PhoneCtx } from "@/components/phone/PhoneApp";
 import type { AudioManager } from "@/lib/audio";
-import type { Round } from "@/lib/types";
+import type { Attempt, ModeId, RoomState, Round } from "@/lib/types";
 
 export type StageDef = { seconds: number; points: number };
 
@@ -15,13 +16,22 @@ export type TvEngineProps = {
   onPlayingChange: (playing: boolean) => void;
 };
 
+/** Tela da rodada na TV enquanto a música está em jogo (playing / answering / doubt). */
+export type TvRoundViewProps = { state: RoomState; round: Round; attempt?: Attempt; now: number; clipPlaying: boolean };
+
+/** Tela da rodada no celular do jogador enquanto a música está em jogo. */
+export type PhoneRoundViewProps = { state: RoomState; ctx: PhoneCtx; round: Round; now: number; onFeedback: (m: string) => void };
+
+/** Painel compacto da rodada no celular do apresentador. */
+export type PresenterRoundViewProps = { state: RoomState; round: Round; now: number };
+
 /**
- * Definição de um modo de jogo. A base (salas, times, botão, respostas,
- * placar) é comum; cada modo define estágios/pontos e como a rodada é tocada.
- * Fase 2: letra, quiz, instrumentos entram aqui sem mexer na base.
+ * Definição de um modo de jogo. A base (salas, times, respostas, placar) é
+ * comum; cada modo define estágios/pontos, como a rodada é tocada e, se
+ * quiser, as próprias telas da rodada (senão valem as do clássico).
  */
 export type ModeDef = {
-  id: string;
+  id: ModeId;
   label: string;
   description: string;
   stages: StageDef[];
@@ -29,4 +39,7 @@ export type ModeDef = {
   pickOffsets: (durationSec: number) => number[];
   /** componente sem UI que toca os trechos quando o dono manda */
   TvEngine: ComponentType<TvEngineProps>;
+  TvRoundView?: ComponentType<TvRoundViewProps>;
+  PhoneRoundView?: ComponentType<PhoneRoundViewProps>;
+  PresenterRoundView?: ComponentType<PresenterRoundViewProps>;
 };

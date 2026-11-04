@@ -8,7 +8,7 @@ import type { SfxVolume } from "./types";
 type Wave = OscillatorType;
 
 /** Duração (s) de cada efeito, para a música esperar o efeito acabar. */
-export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.95, tick: 0.08, reveal: 1.1, fanfare: 2.4 } as const;
+export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.95, tick: 0.08, reveal: 1.1, fanfare: 2.4, bid: 0.45, pass: 0.25 } as const;
 
 export type SfxName = keyof typeof SFX_LEN;
 
@@ -210,6 +210,14 @@ export class Sfx {
       case "reveal": // varredura subindo + acorde brilhante
         this.tone(220, 0, 0.6, { type: "sawtooth", gain: 0.08, to: 880, filter: 2500 });
         [79, 83, 86].forEach((n) => this.tone(NOTE(n), 0.5, 0.6, { type: "sine", gain: 0.12 }));
+        break;
+      case "bid": // martelo do leiloeiro: duas batidas secas + "plim"
+        this.tone(180, 0, 0.09, { type: "square", gain: 0.3, to: 70, filter: 1200 });
+        this.tone(180, 0.14, 0.09, { type: "square", gain: 0.3, to: 70, filter: 1200 });
+        this.tone(NOTE(88), 0.26, 0.2, { type: "triangle", gain: 0.12 });
+        break;
+      case "pass": // "Pode tocar!": bipe curto descendo
+        this.tone(660, 0, 0.18, { type: "sine", gain: 0.14, to: 440 });
         break;
       case "fanfare": { // fanfarra do pódio
         const seq: [number, number, number][] = [

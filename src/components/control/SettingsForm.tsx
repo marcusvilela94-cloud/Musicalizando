@@ -8,6 +8,14 @@ import type { MusicSource, RoomSettings, RoomState } from "@/lib/types";
 const PRESET_SOURCES: MusicSource[] = [{ type: "preset", id: "top_brasil", label: "Top Brasil" }];
 const sameSource = (a: MusicSource, b: MusicSource) => a.type === b.type && a.id === b.id;
 
+type GameMode = "classic" | "auction" | "mix";
+const MODE_HINTS: Record<GameMode, string> = {
+  classic: "Trechos crescentes (1s, 2s, 4s…): quem apertar EU SEI! primeiro responde. Quanto antes, mais pontos.",
+  auction:
+    "A TV dá uma dica (artista, ou gênero e ano). Os times dão lances de quantos segundos precisam (começa em 20s); o menor lance ouve primeiro. Acerto vale 100. Sem penalidade.",
+  mix: "Cada rodada sorteia Clássico ou Leilão.",
+};
+
 /**
  * Configuração da partida. Aparece na TV (estilo "Todos jogam") ou no
  * celular do apresentador (estilo "Com apresentador").
@@ -38,6 +46,16 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     update({ sources: [...settings.sources, src] });
   };
   const removeSource = (src: MusicSource) => update({ sources: settings.sources.filter((s) => !sameSource(s, src)) });
+
+  // "Misturar" = sorteia o modo de cada rodada entre Clássico e Leilão
+  const gameMode: GameMode =
+    settings.modeSelection === "random" && settings.modePool.length > 1 ? "mix" : settings.mode === "auction" ? "auction" : "classic";
+  const setGameMode = (m: GameMode) =>
+    update(
+      m === "mix"
+        ? { modeSelection: "random", modePool: ["classic", "auction"] }
+        : { mode: m, modeSelection: "fixed", modePool: [m] },
+    );
 
   return (
     <div className="flex w-full flex-col gap-4 text-left">
@@ -74,6 +92,11 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
+        <Card className="flex flex-col gap-3 md:col-span-2">
+          <h2 className="font-display text-xl font-semibold">Modo de jogo</h2>
+          <Segmented value={gameMode} options={[["classic", "🎵 Clássico"], ["auction", "🔨 Leilão"], ["mix", "🎲 Misturar"]]} onChange={setGameMode} />
+          <p className="text-sm text-white/60">{MODE_HINTS[gameMode]}</p>
+        </Card>
         <Card className="flex flex-col gap-3">
           <h2 className="font-display text-xl font-semibold">Número de músicas: {settings.rounds}</h2>
           <input
@@ -89,7 +112,10 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
         </Card>
         <Option title="O que vale" value={settings.scoring} onChange={(v) => update({ scoring: v })}
           options={[["artist_title", "Artista e música"], ["title", "Só a música"]]}
-          hint={settings.scoring === "artist_title" ? "Artista vale 50% dos pontos, música 100%, as duas juntas 150%." : undefined} />
+          hint={[
+            settings.scoring === "artist_title" ? "Artista vale 50% dos pontos, música 100%, as duas juntas 150%." : "",
+            gameMode !== "classic" ? "No Leilão quem manda é a dica: dica artista vale a música; dica gênero/ano vale o artista." : "",
+          ].filter(Boolean).join(" ") || undefined} />
         {host && (
           <Option title="Modo de resposta" value={settings.answerMode} onChange={(v) => update({ answerMode: v })}
             options={[["spoken", "Falada"], ["typed", "Digitada"]]}
@@ -106,7 +132,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
           options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
           hint="Quem erra fica bloqueado; a contagem só começa quando a música volta a tocar. Se outro time errar, quem estava bloqueado é liberado." />
         <Option title="Penalidade por erro" value={settings.penalty} onChange={(v) => update({ penalty: v })}
-          options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]} />
+          options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]}
+          hint={gameMode !== "classic" ? "Não vale nas rodadas de Leilão." : undefined} />
         <Option title="Efeitos sonoros" value={settings.sounds} onChange={(v) => update({ sounds: v })}
           options={[[true, "Ligados"], [false, "Desligados"]]} />
         {settings.sounds && (

@@ -1,7 +1,7 @@
 // Acesso à API pública do Deezer. SÓ roda no servidor (rotas /api/deezer/*):
 // o Deezer bloqueia chamadas diretas do navegador por CORS.
 import "server-only";
-import type { MusicSource, PickedTrack } from "./types";
+import type { MusicSource, PickedTrack, TrackMeta } from "./types";
 
 const API = "https://api.deezer.com";
 
@@ -20,8 +20,37 @@ type DzTrack = {
   preview?: string;
   artist: DzArtist;
   contributors?: DzArtist[];
-  album?: { title?: string; cover_medium?: string; cover_big?: string };
+  album?: { id?: number; title?: string; cover_medium?: string; cover_big?: string };
 };
+type DzAlbum = {
+  title?: string;
+  record_type?: string;
+  release_date?: string;
+  genres?: { data?: { name?: string }[] };
+  artist?: { id?: number; name?: string };
+};
+
+const VARIOUS_ARTISTS_ID = 5080;
+/** Títulos típicos de coletânea (o ano do álbum não é o da música). */
+const COMPILATION_TITLE = /greatest hits|best of|the very best|grandes sucessos|maiores sucessos|as melhores|colet[aâ]nea|\bhits\b/i;
+
+async function getTrackMeta(albumId: number | undefined): Promise<TrackMeta> {
+  const none: TrackMeta = { genre: null, year: null, compilation: false };
+  if (!albumId) return none;
+  try {
+    const a = await dz<DzAlbum>(`/album/${albumId}`);
+    const year = Number((a.release_date ?? "").slice(0, 4));
+    const genre = a.genres?.data?.map((g) => g.name?.trim()).find((g) => g && g.toLowerCase() !== "all") ?? null;
+    const compilation =
+      a.record_type === "compile" ||
+      a.artist?.id === VARIOUS_ARTISTS_ID ||
+      /various artists|v[aá]rios artistas/i.test(a.artist?.name ?? "") ||
+      COMPILATION_TITLE.test(a.title ?? "");
+    return { genre, year: year >= 1900 && year <= new Date().getFullYear() + 1 ? year : null, compilation };
+  } catch {
+    return none;
+  }
+}
 type DzList<T> = { data?: T[]; next?: string; total?: number; error?: { message: string } };
 
 async function dz<T>(pathOrUrl: string): Promise<T> {
@@ -101,6 +130,7 @@ export async function getTrack(id: string) {
     title: t.title,
     artist: t.artist?.name ?? "",
     artists: [...new Set(artists)],
+    meta: await getTrackMeta(t.album?.id),
   };
 }
 

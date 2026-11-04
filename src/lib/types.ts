@@ -16,10 +16,12 @@ export type ClipMode = "sequence" | "alternate";
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
+export type ModeId = "classic" | "auction";
+
 export type RoomSettings = {
-  mode: string; // modo fixo da partida (fase 1: "classic")
-  modeSelection: "fixed" | "random"; // fase 2: sorteio de modo por rodada
-  modePool: string[];
+  mode: ModeId; // modo fixo da partida
+  modeSelection: "fixed" | "random"; // "random": sorteia o modo de cada rodada entre os do modePool
+  modePool: ModeId[];
   rounds: number; // 5..30
   answerSeconds: 0 | 10 | 20 | 30; // 0 = sem limite
   penalty: 0 | 20 | 50;
@@ -45,7 +47,10 @@ export type PickedTrack = {
   album: string | null;
 };
 
-export type Phase = "config" | "lobby" | "playing" | "finished";
+/** Dica do Leilão: gênero e ano do álbum da faixa (null quando não é confiável). */
+export type TrackMeta = { genre: string | null; year: number | null; compilation: boolean };
+
+export type Phase ="config" | "lobby" | "playing" | "finished";
 export type RoundStatus = "loading" | "playing" | "answering" | "doubt" | "revealed" | "scoreboard";
 export type AttemptStatus = "open" | "doubt" | "correct" | "wrong" | "timeout" | "cancelled" | "late";
 export type FieldResult = "ok" | "doubt" | "wrong" | "empty" | null;
@@ -87,6 +92,32 @@ export type Reveal = {
   album: string | null;
 };
 
+/** Leilão: "artist" = TV mostra o artista (vale a música); "genre" = gênero + ano (vale o artista). */
+export type AuctionHint = "artist" | "genre";
+
+/** Estado do leilão (npl_rounds.auction), só nas rodadas do modo "auction". */
+export type AuctionState = {
+  hint: AuctionHint;
+  artist: string | null;
+  artists: string[] | null;
+  genre: string | null;
+  year: number | null;
+  phase: "bidding" | "proving";
+  starts_at: string;
+  order: string[]; // times na ordem do rodízio
+  turn: string | null; // time da vez (lances)
+  turn_deadline: string | null;
+  low: number; // menor lance atual (20 = ninguém deu lance)
+  low_team: string | null;
+  bids: Record<string, number>;
+  passes: string[];
+  log: { team: string; secs: number | null; at: string }[]; // secs null = "Pode tocar!"
+  queue: { team: string; secs: number }[]; // fila de prova
+  qidx: number; // posição atual da fila
+  played: number; // última posição que já ouviu o trecho
+  winner: string | null; // venceu o leilão (menor lance)
+};
+
 export type Round = {
   id: string;
   room_id: string;
@@ -111,6 +142,7 @@ export type Round = {
   title_team_id: string | null;
   found: { artist?: string; title?: string }; // partes já descobertas
   locks: Record<string, TeamLock>; // team_id -> bloqueio (relógio do servidor)
+  auction: Partial<AuctionState>; // vazio ({}) fora do leilão
   started_at: string | null;
   revealed_at: string | null;
 };
