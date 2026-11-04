@@ -8,6 +8,10 @@ export type MusicSource =
 export type Scoring = "artist_title" | "title"; // "Artista e música" | "Só a música"
 export type AnswerMode = "spoken" | "typed"; // "Falada" | "Digitada"
 export type RoomStyle = "all" | "host"; // "Todos jogam" | "Com apresentador"
+export type SfxVolume = "low" | "medium" | "high";
+
+/** Bloqueio de um time depois de errar. started_at/until = null: aguardando a música voltar. */
+export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
 export type RoomSettings = {
@@ -20,8 +24,9 @@ export type RoomSettings = {
   scoring: Scoring;
   roomStyle: RoomStyle;
   answerMode: AnswerMode; // no estilo "all" é sempre "typed"
-  lockSeconds: 10 | 15 | 20 | 30; // bloqueio após erro
+  lockSeconds: 5 | 10 | 15 | 20 | 30; // bloqueio após erro (conta só com a música tocando)
   sounds: boolean; // efeitos sonoros na TV
+  sfxVolume?: SfxVolume; // volume dos efeitos (padrão "high")
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
@@ -102,7 +107,7 @@ export type Round = {
   artist_team_id: string | null;
   title_team_id: string | null;
   found: { artist?: string; title?: string }; // partes já descobertas
-  locks: Record<string, string>; // team_id -> horário (servidor) em que o time é liberado
+  locks: Record<string, TeamLock>; // team_id -> bloqueio (relógio do servidor)
   started_at: string | null;
   revealed_at: string | null;
 };

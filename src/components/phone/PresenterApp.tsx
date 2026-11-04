@@ -16,6 +16,7 @@ import {
   attemptParts,
   currentRound,
   lockedTeams,
+  lockLabel,
   missingParts,
   ranking,
   roundAttempts,
@@ -120,8 +121,8 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
 
       {locks.length > 0 && round.status === "playing" && (
         <div className="flex flex-wrap gap-2">
-          {locks.map(({ team, ms }) => (
-            <TeamChip key={team.id} team={team} className="opacity-70 tabular-nums">🔒 {team.name} {Math.ceil(ms / 1000)}s</TeamChip>
+          {locks.map((l) => (
+            <TeamChip key={l.team.id} team={l.team} className="opacity-70 tabular-nums">🔒 {l.team.name} {lockLabel(l)}</TeamChip>
           ))}
         </div>
       )}

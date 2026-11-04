@@ -10,7 +10,7 @@ import {
   currentAttempt,
   formatSeconds,
   lateTaps,
-  lockLeftMs,
+  lockInfo,
   missingParts,
   ranking,
   recentDecision,
@@ -21,7 +21,7 @@ import type { Attempt, RoomState, Round } from "@/lib/types";
 import type { PhoneCtx } from "./PhoneApp";
 
 const REASONS: Record<string, string> = {
-  locked: "Seu time está bloqueado por alguns segundos.",
+  locked: "Seu time está bloqueado.",
   paused: "Jogo pausado.",
   closed: "Essa música já fechou.",
   not_yet: "Você joga a partir da próxima música.",
@@ -129,8 +129,8 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
   const team = ctx.team!;
   const busy = useRef(false);
   const [pressed, setPressed] = useState(false);
-  const lockMs = lockLeftMs(round, team.id, now);
-  const locked = lockMs > 0;
+  const lock = lockInfo(round, team.id, now);
+  const locked = !!lock;
   const bg = locked ? "#64748b" : team.color;
 
   const press = async () => {
@@ -172,14 +172,14 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
           <>
             🔒
             <br />
-            <span className="tabular-nums">Liberado em {Math.ceil(lockMs / 1000)}s</span>
+            <span className="tabular-nums">{lock!.waiting ? "Aguardando a música" : `Liberado em ${Math.ceil(lock!.ms / 1000)}s`}</span>
           </>
         ) : (
           "EU SEI!"
         )}
       </button>
       <p className="font-display text-xl text-white/80">
-        {locked ? "Seu time errou — espere a contagem" : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
+        {locked ? (lock!.waiting ? "Seu time errou — a contagem começa quando a música voltar" : "Seu time errou — espere a contagem") : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
       </p>
     </div>
   );

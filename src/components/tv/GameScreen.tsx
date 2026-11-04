@@ -15,6 +15,7 @@ import {
   isHostStyle,
   lateTaps,
   lockedTeams,
+  lockLabel,
   missingParts,
   ranking,
   recentDecision,
@@ -53,7 +54,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
 
   useEffect(() => {
     sharedSfx().setEnabled(state.room.settings.sounds !== false);
-  }, [state.room.settings.sounds]);
+    sharedSfx().setVolume(state.room.settings.sfxVolume);
+  }, [state.room.settings.sounds, state.room.settings.sfxVolume]);
 
   // ao trocar de rodada: silencia o que estiver tocando
   useEffect(() => {
@@ -246,7 +248,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
 }
 
 function TopBar({ state, round, now }: { state: RoomState; round: Round; now: number }) {
-  const locks = new Map(lockedTeams(state, round, now).map((l) => [l.team.id, l.ms]));
+  const locks = new Map(lockedTeams(state, round, now).map((l) => [l.team.id, l]));
   return (
     <div className="flex flex-wrap items-center gap-4">
       <div className="font-display text-3xl">
@@ -257,7 +259,7 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
         {ranking(state.teams).map(({ team }) => (
           <TeamChip key={team.id} team={team} className={`text-xl ${locks.has(team.id) ? "opacity-60" : ""}`}>
             {team.name} <b>{team.score}</b>
-            {locks.has(team.id) && <span className="tabular-nums">🔒{Math.ceil(locks.get(team.id)! / 1000)}s</span>}
+            {locks.has(team.id) && <span className="tabular-nums">🔒{locks.get(team.id)!.waiting ? "" : lockLabel(locks.get(team.id)!)}</span>}
           </TeamChip>
         ))}
       </div>
@@ -331,9 +333,9 @@ function RoundView({ state, round, attempt, now, clipPlaying }: { state: RoomSta
       <StageBar round={round} />
       <div className="flex flex-wrap items-center justify-center gap-4 font-display text-3xl">
         <Worth state={state} round={round} />
-        {locks.map(({ team, ms }) => (
-          <span key={team.id} className="rounded-full px-4 py-1 text-2xl tabular-nums" style={{ background: team.color, color: textOn(team.color), opacity: 0.75 }}>
-            🔒 {team.name} {Math.ceil(ms / 1000)}s
+        {locks.map((l) => (
+          <span key={l.team.id} className="rounded-full px-4 py-1 text-2xl tabular-nums" style={{ background: l.team.color, color: textOn(l.team.color), opacity: 0.75 }}>
+            🔒 {l.team.name} {lockLabel(l)}
           </span>
         ))}
       </div>

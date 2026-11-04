@@ -1,23 +1,52 @@
 "use client";
 // Efeitos sonoros sintetizados na hora (Web Audio: osciladores + envelopes).
-// Nenhum arquivo de áudio externo. Usa o mesmo AudioContext da música.
+// Nenhum arquivo de áudio externo. Usa o mesmo AudioContext da música, mas com
+// uma cadeia própria (volume dos efeitos -> compressor -> saída), separada da música.
 import { type AudioManager, sharedAudio } from "./audio";
+import type { SfxVolume } from "./types";
 
 type Wave = OscillatorType;
 
 /** Duração (s) de cada efeito, para a música esperar o efeito acabar. */
-export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.6, tick: 0.08, reveal: 1.1, fanfare: 2.4 } as const;
+export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.95, tick: 0.08, reveal: 1.1, fanfare: 2.4 } as const;
 
 export type SfxName = keyof typeof SFX_LEN;
 
 const NOTE = (n: number) => 440 * 2 ** ((n - 69) / 12); // MIDI -> Hz
 
+/** Ganho antes do compressor: quanto maior, mais alto (o compressor segura os picos). */
+const DRIVE: Record<SfxVolume, number> = { low: 1, medium: 2, high: 3.5 };
+
 export class Sfx {
   enabled = true;
+  private volume: SfxVolume = "high";
+  private bus: { ctx: AudioContext; input: GainNode } | null = null;
   constructor(private audio: AudioManager) {}
 
   setEnabled(on: boolean) {
     this.enabled = on;
+  }
+
+  setVolume(v: SfxVolume | undefined) {
+    this.volume = v ?? "high";
+    if (this.bus) this.bus.input.gain.setTargetAtTime(DRIVE[this.volume], this.bus.ctx.currentTime, 0.02);
+  }
+
+  /** Entrada da cadeia dos efeitos: ganho (volume) -> compressor/limitador -> saída. */
+  private out(ctx: AudioContext) {
+    if (this.bus?.ctx !== ctx) {
+      const input = ctx.createGain();
+      input.gain.value = DRIVE[this.volume];
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -8;
+      comp.knee.value = 4;
+      comp.ratio.value = 20;
+      comp.attack.value = 0.002;
+      comp.release.value = 0.15;
+      input.connect(comp).connect(ctx.destination);
+      this.bus = { ctx, input };
+    }
+    return this.bus.input;
   }
 
   private get ctx() {
@@ -51,9 +80,38 @@ export class Sfx {
       node.connect(f);
       node = f;
     }
-    node.connect(g).connect(ctx.destination);
+    node.connect(g).connect(this.out(ctx));
     osc.start(t0);
     osc.stop(t0 + dur + 0.05);
+  }
+
+  /** Buzina de "errou!" de programa de auditório: grave, áspera, volume constante e corte seco. */
+  private buzzer(dur: number) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const end = t0 + dur;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.3, t0 + 0.012); // ataque quase instantâneo
+    g.gain.setValueAtTime(0.3, end - 0.012);
+    g.gain.linearRampToValueAtTime(0, end); // corte seco (sem clique)
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = 2400;
+    f.Q.value = 2; // realça a aspereza perto do corte
+    f.connect(g).connect(this.out(ctx));
+    // duas ondas graves levemente desafinadas -> batimento "rascante"
+    for (const [type, freq, gain] of [["sawtooth", 125, 0.8], ["square", 131, 0.55], ["sawtooth", 62.5, 0.35]] as const) {
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      og.gain.value = gain;
+      osc.connect(og).connect(f);
+      osc.start(t0);
+      osc.stop(end + 0.02);
+    }
   }
 
   play(name: SfxName, opts?: { last?: boolean }) {
@@ -66,9 +124,8 @@ export class Sfx {
       case "correct": // arpejo maior ascendente
         [72, 76, 79, 84].forEach((n, i) => this.tone(NOTE(n), i * 0.09, 0.4, { type: "triangle", gain: 0.22 }));
         break;
-      case "wrong": // buzina grave curta
-        this.tone(130, 0, 0.55, { type: "sawtooth", gain: 0.18, to: 95, filter: 900 });
-        this.tone(137, 0, 0.55, { type: "sawtooth", gain: 0.14, to: 100, filter: 900 });
+      case "wrong": // buzina de "errou!" (programa de auditório)
+        this.buzzer(SFX_LEN.wrong);
         break;
       case "tick": // tique-taque (o último segundo é mais agudo)
         this.tone(opts?.last ? 1500 : 1000, 0, 0.06, { type: "square", gain: 0.08, filter: 3000 });

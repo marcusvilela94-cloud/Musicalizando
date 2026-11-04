@@ -98,12 +98,17 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
         <Option title="Tempo de resposta do time" value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
           options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
         <Option title="Bloqueio após erro" value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
-          options={[[10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
-          hint="Quem erra fica esse tempo sem poder apertar." />
+          options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
+          hint="Quem erra fica bloqueado; a contagem só começa quando a música volta a tocar. Se outro time errar, quem estava bloqueado é liberado." />
         <Option title="Penalidade por erro" value={settings.penalty} onChange={(v) => update({ penalty: v })}
           options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]} />
         <Option title="Efeitos sonoros" value={settings.sounds} onChange={(v) => update({ sounds: v })}
           options={[[true, "Ligados"], [false, "Desligados"]]} />
+        {settings.sounds && (
+          <Option title="Volume dos efeitos" value={settings.sfxVolume ?? "high"} onChange={(v) => update({ sfxVolume: v })}
+            options={[["low", "Baixo"], ["medium", "Médio"], ["high", "Alto"]]}
+            hint="Separado do volume da música." />
+        )}
         <Card className="flex flex-col gap-3 md:col-span-2">
           <h2 className="font-display text-xl font-semibold">Times</h2>
           <div className="flex flex-wrap items-center gap-4">

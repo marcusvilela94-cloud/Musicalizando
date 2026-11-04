@@ -121,10 +121,18 @@ assert.equal(st.room.settings.roomStyle, "all", "padrão: todos jogam");
 assert.equal(st.room.settings.answerMode, "typed", "todos jogam: sempre digitada");
 assert.equal(st.room.settings.lockSeconds, 15);
 assert.equal(st.room.settings.sounds, true);
+assert.equal(st.room.settings.sfxVolume, "high");
 await rpc("npl_update_settings", code, OWNER, { roomStyle: "host", answerMode: "spoken", lockSeconds: 99 });
 st = await rpc("npl_get_state", code);
 assert.equal(st.room.settings.answerMode, "spoken", "com apresentador: falada");
 assert.equal(st.room.settings.lockSeconds, 15, "valor inválido volta ao padrão");
+await rpc("npl_update_settings", code, OWNER, { lockSeconds: 5, sfxVolume: "low" });
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.settings.lockSeconds, 5, "5 s é aceito");
+assert.equal(st.room.settings.sfxVolume, "low");
+await rpc("npl_update_settings", code, OWNER, { lockSeconds: 15, sfxVolume: "alto demais" });
+st = await rpc("npl_get_state", code);
+assert.equal(st.room.settings.sfxVolume, "high", "volume inválido volta ao padrão");
 assert.equal(st.owner.claimed, false);
 assert.equal(st.room.ctrl_hash, undefined, "hash do apresentador não vaza");
 
@@ -199,13 +207,27 @@ await fails(rpc("npl_decide", code, P(2), r1.attempt_id, true, true), "not_owner
 assert.equal(await rpc("npl_decide", code, PRES, r1.attempt_id, false, false), "wrong");
 st = await rpc("npl_get_state", code);
 assert.equal(st.teams.find((t) => t.id === B).score, -20);
-const lockB = Date.parse(st.rounds[0].locks[B]);
-assert.ok(Math.abs(lockB - st.server_now - 15000) < 2000, "bloqueado por ~15 s");
+assert.equal(st.rounds[0].locks[B].secs, 15);
+assert.equal(st.rounds[0].locks[B].started_at, null, "contagem não começa no erro");
+assert.equal(st.rounds[0].locks[B].until, null);
 assert.equal(st.rounds[0].status, "playing");
 assert.equal(st.rounds[0].stage, 2);
-const lk = await rpc("npl_buzz", code, P(2), R);
+let lk = await rpc("npl_buzz", code, P(2), R);
+assert.equal(lk.reason, "locked", "bloqueado enquanto a música não volta");
+assert.equal(lk.until, null);
+// a música volta (repetir): a contagem começa agora
+await rpc("npl_play", code, PRES, R, 2, false);
+st = await rpc("npl_get_state", code);
+const lockB = Date.parse(st.rounds[0].locks[B].until);
+assert.ok(Math.abs(lockB - st.server_now - 15000) < 2000, "bloqueado por ~15 s a partir do play");
+assert.ok(st.rounds[0].locks[B].started_at);
+lk = await rpc("npl_buzz", code, P(2), R);
 assert.equal(lk.reason, "locked");
 assert.ok(lk.until);
+// tocar de novo não reinicia uma contagem que já está correndo
+await rpc("npl_play", code, PRES, R, 2, false);
+st = await rpc("npl_get_state", code);
+assert.equal(Date.parse(st.rounds[0].locks[B].until), lockB, "contagem não reinicia");
 
 // A acerta só o artista (roubo vale normal): 80 * 50% = 40; rodada continua
 let ra = await rpc("npl_buzz", code, P(1), R);
@@ -225,12 +247,30 @@ await rpc("npl_pause", code, PRES, true);
 await db.query("update npl_rooms set paused_at = paused_at - interval '10 seconds' where code = $1", [code]);
 await rpc("npl_pause", code, PRES, false);
 st = await rpc("npl_get_state", code);
-assert.ok(Date.parse(st.rounds[0].locks[B]) - lockB >= 9500, "bloqueio andou junto com a pausa");
-// o tempo de bloqueio passou: B volta a poder apertar, independente dos outros
-await db.query(`update npl_rounds set locks = jsonb_build_object($1::text, clock_timestamp() - interval '1 second') where id = $2`, [B, R]);
+assert.ok(Date.parse(st.rounds[0].locks[B].until) - lockB >= 9500, "bloqueio andou junto com a pausa");
+// o tempo de bloqueio passou: B volta a poder apertar
+await db.query(`update npl_rounds set locks = jsonb_set(locks, array[$1::text, 'until'], to_jsonb(clock_timestamp() - interval '1 second')) where id = $2`, [B, R]);
 const rb0 = await rpc("npl_buzz", code, P(2), R);
 assert.equal(rb0.ok, true, "liberado depois do tempo");
 assert.equal(await rpc("npl_decide", code, PRES, rb0.attempt_id, false, false), "wrong");
+// B errou de novo (aguardando a música); A erra -> B é liberado na hora, A fica bloqueado
+st = await rpc("npl_get_state", code);
+assert.equal(st.rounds[0].locks[B].until, null);
+const ra0 = await rpc("npl_buzz", code, P(1), R);
+assert.equal(ra0.ok, true);
+assert.equal(await rpc("npl_decide", code, PRES, ra0.attempt_id, false, false), "wrong");
+st = await rpc("npl_get_state", code);
+assert.equal(st.rounds[0].locks[B], undefined, "outro time errou: B liberado");
+assert.ok(st.rounds[0].locks[A], "A bloqueado");
+const rb1 = await rpc("npl_buzz", code, P(2), R);
+assert.equal(rb1.ok, true, "B pode apertar");
+assert.equal(await rpc("npl_decide", code, PRES, rb1.attempt_id, false, false), "wrong");
+// desfaz essas duas tentativas extras (só testavam o bloqueio) para manter o placar do resto do teste
+await db.query("delete from npl_attempts where id in ($1, $2)", [ra0.attempt_id, rb1.attempt_id]);
+await db.query("select npl_rescore_round($1)", [R]);
+await db.query("select npl_recalc_scores(room_id) from npl_rounds where id = $1", [R]);
+st = await rpc("npl_get_state", code);
+assert.deepEqual(Object.keys(st.rounds[0].locks), [B]);
 
 // próximo trecho (60 pts) e o mesmo time A tenta a música: "Os dois" só conta a música
 await rpc("npl_play", code, PRES, R, 2, true);

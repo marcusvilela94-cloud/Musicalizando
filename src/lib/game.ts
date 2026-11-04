@@ -18,16 +18,29 @@ export function attemptParts(a: Attempt) {
   return parts.join(" e ");
 }
 
-/** Milissegundos até o time ser liberado do bloqueio (0 = pode apertar). Relógio do servidor. */
-export function lockLeftMs(r: Round | null, teamId: string | null | undefined, now: number) {
-  const until = r && teamId ? r.locks?.[teamId] : undefined;
-  return until ? Math.max(0, Date.parse(until) - now) : 0;
+/**
+ * Bloqueio do time agora (relógio do servidor): null = pode apertar;
+ * waiting = errou e aguarda a música voltar a tocar; ms = tempo que falta.
+ */
+export function lockInfo(r: Round | null, teamId: string | null | undefined, now: number) {
+  const l = r && teamId ? r.locks?.[teamId] : undefined;
+  if (!l || typeof l !== "object") return null;
+  if (!l.until) return { waiting: true, ms: (l.secs ?? 0) * 1000 };
+  const ms = Date.parse(l.until) - now;
+  return ms > 0 ? { waiting: false, ms } : null;
 }
 
-/** Times bloqueados agora, com o tempo restante. */
+/** Times bloqueados agora, com o tempo restante (ou aguardando a música). */
 export function lockedTeams(s: RoomState, r: Round | null, now: number) {
-  return s.teams.map((t) => ({ team: t, ms: lockLeftMs(r, t.id, now) })).filter((x) => x.ms > 0);
+  return s.teams.flatMap((t) => {
+    const l = lockInfo(r, t.id, now);
+    return l ? [{ team: t, ...l }] : [];
+  });
 }
+
+/** Texto curto do bloqueio: "aguardando a música" ou "12s". */
+export const lockLabel = (l: { waiting: boolean; ms: number }) =>
+  l.waiting ? "aguardando a música" : `${Math.ceil(l.ms / 1000)}s`;
 
 export const isHostStyle = (s: RoomState) => s.room.settings.roomStyle === "host";
 

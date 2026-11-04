@@ -15,15 +15,17 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const stats = matchStats(state);
   const votes = state.players.filter((p) => p.wants_rematch).length;
   const sounds = state.room.settings.sounds !== false;
+  const sfxVolume = state.room.settings.sfxVolume;
   const matchNo = state.room.match_no;
 
   // fanfarra no pódio (uma vez por partida)
   useEffect(() => {
     const sfx = sharedSfx();
     sfx.setEnabled(sounds);
+    sfx.setVolume(sfxVolume);
     ctx.audio.stopAll();
     sfx.play("fanfare");
-  }, [matchNo, sounds, ctx.audio]);
+  }, [matchNo, sounds, sfxVolume, ctx.audio]);
 
   // pódio: 2º, 1º, 3º
   const order = [podium[1], podium[0], podium[2]].filter(Boolean);
