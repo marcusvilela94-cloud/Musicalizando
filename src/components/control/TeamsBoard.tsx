@@ -17,8 +17,11 @@ export function settingsSummary(state: RoomState) {
   const on = enabledModes(s);
   const any = (modes: string[]) => on.some((m) => modes.includes(m));
   const buzz = (s.turnFormat ?? "buzz") === "buzz";
-  const turnsOn = !buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra"]);
-  const buzzRules = buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra"]);
+  const turnsOn = !buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra", "stems"]);
+  const buzzRules = buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra", "stems"]);
+  const stemsLabel = on.includes("stems")
+    ? (s.stemsVariant ?? "layers") === "layers" ? "instrumentos em camadas" : `instrumento: ${{ drums: "bateria", bass: "baixo", guitar: "guitarra", vocals: "voz", random: "sorteado" }[s.stemsInstrument ?? "random"]}`
+    : "";
   const packs = on.includes("obra")
     ? "pacotes: " + OBRA_PACKS.filter((p) => obraPacksOf(s).includes(p.id)).map((p) => `${p.emoji} ${p.label}`).join(", ")
     : "";
@@ -27,9 +30,10 @@ export function settingsSummary(state: RoomState) {
     `${s.rounds} músicas`,
     on.map((m) => getMode(m).label).join(" + ") + (on.length > 1 ? ` (${orderLabel})` : ""),
     packs,
+    stemsLabel,
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
     turnsOn ? (s.passOnWrong !== false ? "um time por vez (passa a vez)" : "um time por vez") : "",
-    !any(["classic", "lyrics"]) ? "" : s.scoring === "title" ? "só a música" : "artista e música",
+    !any(["classic", "lyrics", "stems"]) ? "" : s.scoring === "title" ? "só a música" : "artista e música",
     s.roomStyle === "host" ? (s.answerMode === "spoken" ? "resposta falada" : "resposta digitada") : "resposta digitada",
     ...(buzzRules ? [`bloqueio de ${s.lockSeconds}s após erro`, s.penalty ? `erro −${s.penalty}` : ""] : []),
     (s.tiebreak ?? "sudden") === "sudden" ? "desempate: morte súbita" : "empate aceito",

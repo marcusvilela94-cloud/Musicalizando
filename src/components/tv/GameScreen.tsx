@@ -38,6 +38,7 @@ import { ContinueRevealLine, ContinueStack, SingAlong } from "@/modes/continue/C
 import { CONT_STOP_BEFORE, contOf, singUntil } from "@/modes/continue/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
 import { OBRA_KIND, obraOf } from "@/modes/obra/logic";
+import { STEM_EMOJI, STEM_LABEL, stemsOf, vocalsOnly } from "@/modes/stems/logic";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
 import { QuizQuestion, QuizRevealTv } from "@/modes/quiz/QuizViews";
 import { enabledModes } from "@/modes/schedule";
@@ -412,8 +413,8 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
         ))}
       </div>
       {state.room.prep?.active && (state.room.prep.total ?? 0) > 0 && (
-        <div className="rounded-xl bg-white/5 px-3 py-1 text-sm text-white/60" title="Preparando as músicas do “Continuar a letra” em segundo plano">
-          🎤 preparando {state.room.prep.done ?? 0}/{state.room.prep.total}
+        <div className="rounded-xl bg-white/5 px-3 py-1 text-sm text-white/60" title="Preparando músicas em segundo plano (Continuar a letra / Instrumentos)">
+          ⏳ preparando {state.room.prep.done ?? 0}/{state.room.prep.total}
         </div>
       )}
       <div className="rounded-xl bg-white/10 px-3 py-1 font-display text-xl">Sala {state.room.code}</div>
@@ -427,9 +428,24 @@ function StageBar({ round }: { round: Round }) {
   // modo letra: só os versos que esta música tem (3 a 5)
   const lyr = lyricsOf(round);
   const cont = contOf(round);
-  const stages = lyr ? mode.stages.slice(0, lyr.total) : cont ? mode.stages.slice(0, cont.max) : mode.stages;
+  const stm = stemsOf(round);
+  const stages = stm
+    ? stm.points.map((points, i) => ({ seconds: stm.secs?.[i] ?? 0, points }))
+    : lyr ? mode.stages.slice(0, lyr.total) : cont ? mode.stages.slice(0, cont.max) : mode.stages;
+  // Instrumentos: o nome da camada que entra (ou do instrumento, no "um só")
+  const stemLabel = (i: number) =>
+    stm?.variant === "layers"
+      ? `${i ? "+ " : ""}${STEM_EMOJI[stm.layers![i]]} ${STEM_LABEL[stm.layers![i]]}`
+      : `${stages[i].seconds}s`;
   return (
-    <div className="grid w-full max-w-5xl gap-2" style={{ gridTemplateColumns: `repeat(${stages.length}, 1fr)` }}>
+    <div className="flex w-full max-w-5xl flex-col items-center gap-2">
+    {stm?.variant === "single" && (
+      <p className="font-display text-3xl">
+        Só {stm.instrument === "vocals" ? "a" : "o"} <b className="text-yellow-300">{STEM_EMOJI[stm.instrument ?? "drums"]} {STEM_LABEL[stm.instrument ?? "drums"].toLowerCase()}</b>
+        {stm.instrument === "vocals" && <span className="text-white/70"> — vale o artista (título é bônus)</span>}
+      </p>
+    )}
+    <div className="grid w-full gap-2" style={{ gridTemplateColumns: `repeat(${stages.length}, 1fr)` }}>
       {stages.map((s, i) => {
         const n = i + 1;
         const st = n < round.stage ? "past" : n === round.stage ? "now" : "next";
@@ -440,11 +456,12 @@ function StageBar({ round }: { round: Round }) {
               st === "now" ? "bg-yellow-300 text-violet-950 scale-105 shadow-lg" : st === "past" ? "bg-white/10 text-white/40" : "bg-white/20 text-white/90"
             }`}
           >
-            <div className="text-2xl font-bold">{lyr ? `${n}º verso` : cont ? `${s.seconds} linhas` : `${s.seconds}s`}</div>
+            <div className="text-2xl font-bold">{stm ? stemLabel(i) : lyr ? `${n}º verso` : cont ? `${s.seconds} linhas` : `${s.seconds}s`}</div>
             {!noPoints && <div className="text-lg">{s.points} pts</div>}
           </div>
         );
       })}
+    </div>
     </div>
   );
 }
@@ -453,6 +470,16 @@ function StageBar({ round }: { round: Round }) {
 function Worth({ state, round }: { state: RoomState; round: Round }) {
   const pts = stagePoints(round);
   const need = missingParts(state, round);
+  // só a voz: o artista vale inteiro, o título é bônus
+  if (vocalsOnly(round)) {
+    return (
+      <span>
+        {need.artist && <>Artista <b className="text-yellow-300 text-5xl">{pts}</b></>}
+        {need.artist && need.title && " · "}
+        {need.title && <>Música <b className="text-yellow-300 text-4xl">+{artistPoints(pts)}</b></>}
+      </span>
+    );
+  }
   if (state.room.settings.scoring === "title" || round.mode === "continue" || isQuizMode(round.mode) || round.mode === "obra") {
     return <span>Valendo <b className="text-yellow-300 text-5xl">{pts}</b> pts</span>;
   }

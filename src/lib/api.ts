@@ -1,7 +1,7 @@
 "use client";
 // Wrappers das RPCs npl_* (únicas escritas permitidas no banco).
 import { supabase } from "./supabase";
-import type { ContinuePlan, MusicSource, PickedTrack, QuizPlan, RoomSettings, RoomState, TrackMeta } from "./types";
+import type { ContinuePlan, MusicSource, PickedTrack, QuizPlan, RoomSettings, RoomState, StemsStatus, TrackMeta } from "./types";
 
 type Listener = (kind: string, extra?: Record<string, unknown>) => void;
 let afterMutation: Listener | null = null;
@@ -104,6 +104,16 @@ export const api = {
   contSkip: (code: string, owner: string, roundId: string) =>
     call<void>("npl_cont_skip", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   /** Cache da sincronização ("Continuar a letra"): quais faixas já foram analisadas. */
+  // Instrumentos: o jogo só lê o cache e cria pedidos (quem separa é o programa no PC)
+  stemsStatus: (ids: number[]) => call<StemsStatus>("npl_stems_status", { p_ids: ids }, false),
+  stemsRequest: (code: string, owner: string, ids: number[]) =>
+    call<number>("npl_stems_request", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
+  stemsTouch: (code: string, owner: string, ids: number[]) =>
+    call<void>("npl_stems_touch", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
+  fillStems: (code: string, owner: string, match: number, position: number, track: PickedTrack | null, prep: { active: boolean; done: number; total: number } | null) =>
+    call<{ ok: boolean; round_no?: number; reason?: string }>("npl_fill_stems", {
+      p_code: code, p_owner_token: owner, p_match: match, p_position: position, p_track: track, p_prep: prep,
+    }),
   syncGet: (ids: number[]) => call<{ deezer_id: number; ok: boolean }[]>("npl_sync_get", { p_ids: ids }, false),
   /** Segundo plano: põe a música preparada numa rodada futura e/ou atualiza o progresso. */
   fillCont: (code: string, owner: string, match: number, position: number, track: PickedTrack | null, prep: { active: boolean; done: number; total: number } | null) =>
@@ -221,6 +231,13 @@ export const deezer = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sources, count, versionFilter, lyrics }),
+    }),
+  /** Instrumentos: todas as músicas das fontes (até 150), para ver quantas já estão separadas. */
+  pool: (sources: RoomSettings["sources"], versionFilter: boolean) =>
+    getJson<{ tracks: PickedTrack[]; warnings: string[] }>("/api/deezer/pool", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sources, versionFilter }),
     }),
   track: (id: number | string) =>
     getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),

@@ -3,9 +3,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import type { ModeId, PickedTrack, RoomState } from "@/lib/types";
+import type { ModeId, PickedTrack, RoomState, StemName, StemsVariant } from "@/lib/types";
 import { obraPacksOf, pickObraTracks } from "@/lib/obra";
 import { isQuizMode } from "@/modes/quiz/logic";
+import { stemsPlan } from "@/modes/stems/logic";
 import { TURN_MODES, enabledModes, modeSchedule, playingTeamCount } from "@/modes/schedule";
 
 /** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
@@ -14,7 +15,9 @@ const TIEBREAK_RESERVE = 5;
 const CONTINUE_GAP_MS = 3200;
 
 /** Falta de músicas para um modo que precisa de preparo. */
-type Short = { mode: "lyrics" | "continue"; have: number; want: number };
+type Short = { mode: "lyrics" | "continue" | "stems"; have: number; want: number };
+/** Instrumentos: rodadas que esperam o separador (em segundo plano). */
+type StemsBg = { positions: number[]; candidates: PickedTrack[]; variant: StemsVariant; instrument: StemName | "random" };
 type Prepared = {
   tracks: PickedTrack[];
   rounds: number;
@@ -24,6 +27,9 @@ type Prepared = {
   only: boolean;
   /** rodadas de "Continuar a letra" que serão preparadas depois de começar */
   background: { positions: number[]; candidates: PickedTrack[] } | null;
+  /** Instrumentos: músicas do cache usadas (atualiza o "último uso") e o segundo plano */
+  stemsUsed: number[];
+  stemsBg: StemsBg | null;
 };
 export type Progress = { label: string; done: number; total: number };
 
@@ -114,8 +120,32 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
     }
     if (contOnly) onProgress({ label: "Preparando músicas…", done: contOk.length, total: wantC });
   }
-  // as que viraram "continuar" saem das outras
-  const usedC = new Set(contOk.map((t) => t.deezer_id));
+  // Instrumentos: só músicas das fontes que já estão separadas no cache
+  const wantS = plan.filter((m) => m === "stems").length;
+  const variant: StemsVariant = s.stemsVariant ?? "layers";
+  const instrument = s.stemsInstrument ?? "random";
+  let stemsReady: PickedTrack[] = [];
+  let stemsCandidates: PickedTrack[] = [];
+  let workerOn = false;
+  if (wantS) {
+    onProgress({ label: "Conferindo os instrumentos prontos…", done: 0, total: 0 });
+    const srcPool = await deezer.pool(s.sources, s.versionFilter !== false).then((r) => r.tracks).catch(() => all);
+    const st = await api.stemsStatus(srcPool.map((t) => t.deezer_id)).catch(() => null);
+    workerOn = !!st?.worker?.alive;
+    const readyMap = new Map((st?.ready ?? []).map((r) => [r.deezer_id, r]));
+    const mixed = [...srcPool].sort(() => Math.random() - 0.5);
+    stemsReady = mixed
+      .filter((t) => readyMap.has(t.deezer_id))
+      .slice(0, wantS)
+      .map((t) => ({ ...t, lyrics: undefined, mode: "stems" as const, stems: stemsPlan(readyMap.get(t.deezer_id)!, variant, instrument) }));
+    stemsCandidates = mixed.filter((t) => !readyMap.has(t.deezer_id));
+  }
+  const haveS = stemsReady.length;
+  // separador ligado: as que faltam são preparadas em segundo plano; desligado: só as prontas
+  const pendingS = workerOn ? wantS - haveS : 0;
+
+  // as que viraram "continuar" ou "instrumentos" saem das outras
+  const usedC = new Set([...contOk, ...stemsReady].map((t) => t.deezer_id));
   const otherPool = rest.filter((t) => !usedC.has(t.deezer_id));
 
   const haveL = Math.min(wantL, lyricPool.length);
@@ -125,29 +155,34 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   const short: Short[] = [];
   if (haveL < wantL) short.push({ mode: "lyrics", have: haveL, want: wantL });
   if (contOnly && haveC < wantC) short.push({ mode: "continue", have: haveC, want: wantC });
+  if (!workerOn && haveS < wantS) short.push({ mode: "stems", have: haveS, want: wantS });
   const only = modes.length === 1 && short.length > 0;
 
-  // rodadas de "continuar" sem música pronta: vão para mais adiante (dá tempo de preparar)
-  if (pendingC > 0) {
-    const cIdx = plan.map((m, i) => (m === "continue" ? i : -1)).filter((i) => i >= 0);
-    const pendingIdx = cIdx.slice(haveC); // as primeiras rodadas de "continuar" usam as prontas
-    const early = Math.min(plan.length - 1, 2 + Math.ceil(pendingC / 2)); // ~2 rodadas + tempo de análise
-    for (const i of pendingIdx) {
+  // rodadas sem música pronta ("continuar" / "instrumentos"): vão para mais adiante (dá tempo de preparar)
+  const postpone = (mode: ModeId, have: number, pending: number, early: number) => {
+    const idx = plan.map((m, i) => (m === mode ? i : -1)).filter((i) => i >= 0);
+    for (const i of idx.slice(have)) {
       if (i >= early) continue;
-      const j = plan.findIndex((m, k) => k >= early && m !== "continue");
+      const j = plan.findIndex((m, k) => k >= early && m !== mode && m !== "continue" && m !== "stems");
       if (j >= 0) [plan[i], plan[j]] = [plan[j], plan[i]];
     }
     plan = [...plan];
-  }
+    return pending;
+  };
+  if (pendingC > 0) postpone("continue", haveC, pendingC, Math.min(plan.length - 1, 2 + Math.ceil(pendingC / 2))); // ~2 rodadas + análise
+  // o separador leva ~1 min por música no PC: deixa umas 3 rodadas + 1 por música que falta
+  if (pendingS > 0) postpone("stems", haveS, pendingS, Math.min(plan.length - 1, 3 + pendingS));
 
   // rodadas que ficaram sem música viram os outros modos ligados
-  const fallback = modes.filter((m) => m !== "lyrics" && m !== "continue" && m !== "obra");
+  const fallback = modes.filter((m) => m !== "lyrics" && m !== "continue" && m !== "obra" && m !== "stems");
   let k = 0;
   let keepL = haveL;
+  let keepS = haveS;
+  const other = (m: ModeId) => (only ? m : (fallback[k++ % Math.max(1, fallback.length)] ?? "classic"));
   let finalPlan: ModeId[] = plan.map((m) =>
-    m === "lyrics" && keepL-- <= 0 ? (only ? m : (fallback[k++ % Math.max(1, fallback.length)] ?? "classic")) : m,
+    m === "lyrics" && keepL-- <= 0 ? other(m) : m === "stems" && !workerOn && keepS-- <= 0 ? other(m) : m,
   );
-  if (only) finalPlan = finalPlan.slice(0, modes[0] === "lyrics" ? haveL : haveC);
+  if (only) finalPlan = finalPlan.slice(0, modes[0] === "lyrics" ? haveL : modes[0] === "stems" ? haveS : haveC);
   else if (contOnly) finalPlan = finalPlan.slice(0, haveC);
 
   // distribui as músicas pelas rodadas; "continuar" sem música pronta recebe uma
@@ -158,10 +193,24 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   const bgSet = new Set(pendingC > 0 ? candidates.map((t) => t.deezer_id) : []);
   const op = [...otherPool.filter((t) => !bgSet.has(t.deezer_id)), ...otherPool.filter((t) => bgSet.has(t.deezer_id))];
   const obp = [...obraPool];
+  const sp = [...stemsReady];
   const ordered: PickedTrack[] = [];
   const pendingPos: number[] = [];
+  const pendingStems: number[] = [];
   finalPlan.forEach((m) => {
     let t: PickedTrack | undefined;
+    if (m === "stems") {
+      // pronta no cache (já vem com o plano); senão uma reserva, trocada em segundo plano
+      const ready = sp.shift();
+      if (ready) {
+        ordered.push(ready);
+        return;
+      }
+      t = op.shift() ?? lp.shift();
+      if (t) pendingStems.push(ordered.length + 1);
+      if (t) ordered.push({ ...t, lyrics: undefined, mode: m });
+      return;
+    }
     if (m === "obra") {
       // a faixa do pacote já vem com a obra (quiz) e o modo
       const o = obp.shift();
@@ -230,11 +279,15 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   const background = pendingPos.length
     ? { positions: pendingPos, candidates: candidates.filter((t) => !inMatch.has(t.deezer_id)) }
     : null;
+  const stemsBg: StemsBg | null = pendingStems.length
+    ? { positions: pendingStems, candidates: stemsCandidates.filter((t) => !inMatch.has(t.deezer_id)), variant, instrument }
+    : null;
+  const stemsUsed = ordered.filter((t) => t.stems).map((t) => t.deezer_id);
 
   onProgress(null);
   // o aviso de "poucas músicas" só interessa se faltou para as rodadas (não para as reservas)
   const warnings = [...obraWarn, ...w.filter((x) => !x.startsWith("Só encontrei") || all.length < plan.length - useO)];
-  return { tracks, rounds: ordered.length, warnings, short, only, background };
+  return { tracks, rounds: ordered.length, warnings, short, only, background, stemsUsed, stemsBg };
 }
 
 /** Preparação em segundo plano em andamento (uma por aba; a nova cancela a anterior). */
@@ -284,6 +337,55 @@ async function runBackground(code: string, token: string, match: number, positio
   if (my === bgRun) await api.fillCont(code, token, match, 0, null, prep(false)).catch(() => {});
 }
 
+/** Segundo plano dos Instrumentos (um por aba; a nova partida cancela a anterior). */
+let stemsRun = 0;
+/** Separador no PC: ~1 min por música. Desiste depois de 40 min sem terminar. */
+const STEMS_POLL_MS = 6000;
+const STEMS_GIVE_UP_MS = 40 * 60 * 1000;
+
+/**
+ * Pede ao separador as músicas que faltam e, conforme ficam prontas, põe cada
+ * uma na próxima rodada de Instrumentos que ainda não começou (a que começar
+ * antes vira outro modo ligado, no servidor).
+ */
+async function runStemsBackground(code: string, token: string, match: number, bg: StemsBg) {
+  const my = ++stemsRun;
+  const total = bg.positions.length;
+  const want = bg.candidates.slice(0, total * 2 + 2);
+  const ids = want.map((t) => t.deezer_id);
+  let done = 0;
+  let roundNo = 1;
+  const queue = [...bg.positions];
+  const used = new Set<number>();
+  await api.stemsRequest(code, token, ids).catch(() => 0);
+  await api.fillStems(code, token, match, 0, null, { active: true, done, total }).catch(() => {});
+  const t0 = Date.now();
+  while (queue.length && Date.now() - t0 < STEMS_GIVE_UP_MS) {
+    await new Promise((r) => setTimeout(r, STEMS_POLL_MS));
+    if (my !== stemsRun) return;
+    const st = await api.stemsStatus(ids).catch(() => null);
+    if (!st) continue;
+    for (const r of st.ready) {
+      if (used.has(r.deezer_id)) continue;
+      while (queue.length && queue[0] <= roundNo) queue.shift(); // a rodada já começou: ficou com outro modo
+      const pos = queue[0];
+      if (!pos) break;
+      const t = want.find((x) => x.deezer_id === r.deezer_id);
+      if (!t) continue;
+      used.add(r.deezer_id);
+      const track: PickedTrack = { ...t, lyrics: undefined, mode: "stems", stems: stemsPlan(r, bg.variant, bg.instrument) };
+      const res = await api.fillStems(code, token, match, pos, track, { active: true, done: done + 1, total }).catch(() => null);
+      if (!res || res.reason === "match") return; // outra partida começou
+      roundNo = res.round_no ?? roundNo;
+      if (res.ok) {
+        done++;
+        queue.shift();
+      }
+    }
+  }
+  if (my === stemsRun) await api.fillStems(code, token, match, 0, null, { active: false, done, total }).catch(() => {});
+}
+
 /**
  * Começar / revanche. Se faltou música preparada ("Só pela letra" ou
  * "Continuar a letra"), pergunta antes de começar.
@@ -297,6 +399,10 @@ export function useMatchStarter(state: RoomState, code: string, token: string) {
   const begin = async (p: Prepared) => {
     const r = await api.startMatch(code, token, p.tracks, p.rounds);
     if (p.warnings.length) setError(p.warnings.join(" "));
+    // Instrumentos: marca o uso (o cache apaga as usadas há mais tempo) e prepara as que faltam
+    if (p.stemsUsed.length) void api.stemsTouch(code, token, p.stemsUsed).catch(() => {});
+    if (p.stemsBg) void runStemsBackground(code, token, r.match_no, p.stemsBg);
+    else stemsRun++;
     // segue preparando em segundo plano (sem travar a partida); sem pendências, zera o progresso
     if (p.background) void runBackground(code, token, r.match_no, p.background.positions, p.background.candidates);
     else {
@@ -359,7 +465,10 @@ export function PrepareProgress({ m, compact }: { m: MatchStarter; compact?: boo
   );
 }
 
+const SHORT_EMOJI: Record<Short["mode"], string> = { lyrics: "📝", continue: "🎤", stems: "🥁" };
 const SHORT_TEXT: Record<Short["mode"], (n: number) => string> = {
+  stems: (n) =>
+    `Só ${n} música${n === 1 ? "" : "s"} com instrumentos prontos, e o separador está desligado: ${n} rodada${n === 1 ? "" : "s"} de Instrumentos.`,
   lyrics: (n) => `Só encontramos ${n} música${n === 1 ? "" : "s"} com letra nessas playlists.`,
   continue: (n) => `Só ${n} música${n === 1 ? "" : "s"} servem para “Continuar a letra” (precisa de letra sincronizada e voz clara).`,
 };
@@ -372,7 +481,7 @@ export function LyricsShortNotice({ m, compact }: { m: MatchStarter; compact?: b
     <div className="npl-pop flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-yellow-300 bg-black/40 p-5 text-center">
       {p.short.map((x) => (
         <p key={x.mode} className={`font-display ${compact ? "text-xl" : "text-3xl"}`}>
-          {x.mode === "lyrics" ? "📝" : "🎤"} {SHORT_TEXT[x.mode](x.have)}
+          {SHORT_EMOJI[x.mode]} {SHORT_TEXT[x.mode](x.have)}
         </p>
       ))}
       {!p.only && (

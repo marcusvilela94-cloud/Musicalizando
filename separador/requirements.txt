@@ -1,0 +1,7 @@
+# PyTorch (versão CPU) é instalado antes, pelo instalar-separador.bat:
+#   pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+demucs==4.0.1
+soundfile>=0.12.1
+lameenc>=1.7
+requests>=2.31
+numpy

@@ -1,10 +1,10 @@
 import type { ModeId, RoomSettings } from "@/lib/types";
 
 /** Ordem da lista na configuração (e dos blocos). Modo novo: acrescentar aqui. */
-export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics", "continue", "quiz_open", "quiz_choice", "obra"];
+export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics", "continue", "quiz_open", "quiz_choice", "obra", "stems"];
 
 /** Modos em que vale o "Formato da vez" (Um time por vez). */
-export const TURN_MODES: ModeId[] = ["classic", "lyrics", "continue", "quiz_open", "obra"];
+export const TURN_MODES: ModeId[] = ["classic", "lyrics", "continue", "quiz_open", "obra", "stems"];
 
 /** Times que vão jogar (os vazios saem; quem está sem time entra nos vazios primeiro). */
 export function playingTeamCount(teams: { id: string }[], players: { team_id: string | null }[]) {

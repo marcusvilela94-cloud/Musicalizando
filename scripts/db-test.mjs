@@ -1263,6 +1263,103 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     assert.equal(wr.mode, "classic", "faixa sem obra cai em outro modo");
   }
   console.log("ok qual é a obra");
+
+  // ---------- Instrumentos: fila, cache e separador ----------
+  {
+    const { c: sc0 } = await mkRoom({}, 2);
+    // o jogo pede; o anon não lê as tabelas nem chama as RPCs do separador
+    assert.equal(await rpc("npl_stems_request", sc0, OWNER, [111, 222, 333, 111]), 3, "3 pedidos (sem repetir)");
+    await db.exec("set role anon");
+    await fails(db.query("select * from public.npl_stems_queue"), "permission denied");
+    await fails(db.query("select public.npl_stems_claim()"), "permission denied");
+    await fails(db.query("select public.npl_stems_heartbeat('{}'::jsonb)"), "permission denied");
+    await db.exec("reset role");
+    let st = await rpc("npl_stems_status", [111, 222, 333]);
+    assert.equal(st.worker.alive, false, "separador desligado");
+    assert.deepEqual(st.queue, { pending: 3 });
+    await rpc("npl_stems_heartbeat", { version: "test" });
+    st = await rpc("npl_stems_status", [111]);
+    assert.equal(st.worker.alive, true, "sinal de vida");
+    // separador: pega um por vez, na ordem
+    const job = await rpc("npl_stems_claim");
+    assert.equal(job.deezer_id, 111);
+    assert.equal(job.status, "processing");
+    assert.equal((await rpc("npl_stems_claim")).deezer_id, 222, "o próximo pedido");
+    const paths = (k) => ({ drums: `${k}/drums.mp3`, bass: `${k}/bass.mp3`, guitar: `${k}/guitar.mp3`, vocals: `${k}/vocals.mp3` });
+    await rpc("npl_stems_done", 111, "key-111-aaaa", paths("key-111-aaaa"), 120_000_000,
+      { drums: true, bass: true, guitar: false, vocals: true }, { guitar: -60 });
+    await rpc("npl_stems_fail", 222, "Prévia indisponível");
+    st = await rpc("npl_stems_status", [111, 222, 333]);
+    assert.equal(st.ready.length, 1);
+    assert.equal(st.ready[0].audible.guitar, false, "guitarra vazia marcada");
+    assert.deepEqual(st.queue, { error: 1, pending: 1 }, "1 com erro, 1 na fila");
+    assert.equal(st.errors[0].error, "Prévia indisponível");
+    // pedir de novo: a que deu erro volta para a fila; a pronta não
+    assert.equal(await rpc("npl_stems_request", sc0, OWNER, [111, 222]), 1);
+    // limite: acima de 200 MB apaga as usadas há mais tempo
+    await rpc("npl_stems_done", 333, "key-333-bbbb", paths("key-333-bbbb"), 100_000_000,
+      { drums: true, bass: true, guitar: true, vocals: true }, {});
+    await db.query("update npl_stems_cache set last_used_at = now() - interval '1 day' where deezer_id = 111");
+    await rpc("npl_stems_touch", sc0, OWNER, [333]);
+    const gone = await rpc("npl_stems_evict", 200_000_000);
+    assert.deepEqual(gone.map((g) => g.deezer_id), [111], "apaga a usada há mais tempo");
+    assert.equal(gone[0].paths.drums, "key-111-aaaa/drums.mp3");
+    assert.equal((await rpc("npl_stems_status", [111])).ready.length, 0);
+    assert.deepEqual(await rpc("npl_stems_evict", 200_000_000), [], "já cabe");
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue;");
+  }
+
+  // ---------- Instrumentos: partida ----------
+  {
+    const { c: ic, teams: it } = await mkRoom({ modePool: ["stems"], mode: "stems", scoring: "artist_title", penalty: 20 }, 2);
+    let si = await rpc("npl_get_state", ic);
+    assert.equal(si.room.settings.stemsVariant, "layers", "padrão: camadas");
+    assert.equal(si.room.settings.stemsInstrument, "random");
+    const stemTrack = (i, stems) => ({ deezer_id: 9800 + i, title: `S${i}`, title_short: `S${i}`, artist: "Banda S", artists: ["Banda S"], cover: "x", album: "A", mode: "stems", stems });
+    await rpc("npl_start_match", ic, OWNER, [
+      stemTrack(1, { key: "abcd-1234-efgh", variant: "layers", layers: ["vocals", "drums", "bass"] }), // sem guitarra
+      stemTrack(2, { key: "abcd-5678-efgh", variant: "single", instrument: "vocals" }),
+      stemTrack(3, { key: "../hack" }), // chave inválida: vira outro modo
+    ], 3);
+    let { r: ir } = await cur(ic);
+    await rpc("npl_round_begin", ic, OWNER, ir.id, [], [], {});
+    ({ r: ir } = await cur(ic));
+    assert.equal(ir.mode, "stems");
+    assert.deepEqual(ir.stems.layers, ["drums", "bass", "vocals"], "ordem do jogo; guitarra vazia pulada");
+    assert.deepEqual(ir.stems.points, [100, 75, 20]);
+    assert.equal(ir.stems.key, "abcd-1234-efgh");
+    await rpc("npl_play", ic, OWNER, ir.id, 1, false);
+    assert.equal((await rpc("npl_play", ic, OWNER, ir.id, 1, true)).ok, true, "próxima camada");
+    assert.equal((await rpc("npl_play", ic, OWNER, ir.id, 2, true)).ok, true, "+ voz");
+    assert.equal((await rpc("npl_play", ic, OWNER, ir.id, 3, true)).ok, false, "não há 4ª camada");
+    let ib = await rpc("npl_buzz", ic, P(90), ir.id);
+    let ia = await rpc("npl_submit_answer", ic, P(90), ib.attempt_id, "Banda S", "S1");
+    assert.equal(ia.result, "correct");
+    assert.equal(ia.points, 30, "música 20 + artista 10 na camada da voz");
+    // um instrumento só, a voz: artista vale inteiro, título é bônus
+    await rpc("npl_next_round", ic, OWNER, 1);
+    ({ r: ir } = await cur(ic));
+    await rpc("npl_round_begin", ic, OWNER, ir.id, [], [], {});
+    ({ r: ir } = await cur(ic));
+    assert.equal(ir.stems.variant, "single");
+    assert.equal(ir.stems.instrument, "vocals");
+    assert.deepEqual(ir.stems.points, [100, 60, 30]);
+    await rpc("npl_play", ic, OWNER, ir.id, 1, false);
+    ib = await rpc("npl_buzz", ic, P(91), ir.id);
+    ia = await rpc("npl_submit_answer", ic, P(91), ib.attempt_id, "Banda S", "");
+    assert.equal(ia.points, 100, "voz: o artista vale 100");
+    ({ r: ir } = await cur(ic));
+    assert.equal(ir.status, "playing", "ainda dá para ganhar o bônus do título");
+    ib = await rpc("npl_buzz", ic, P(90), ir.id);
+    ia = await rpc("npl_submit_answer", ic, P(90), ib.attempt_id, "", "S2");
+    assert.equal(ia.points, 50, "voz: título vale metade (bônus)");
+    await rpc("npl_next_round", ic, OWNER, 2);
+    ({ r: ir } = await cur(ic));
+    assert.equal(ir.mode, "classic", "faixa sem stems válidos cai em outro modo");
+    si = await rpc("npl_get_state", ic);
+    assert.equal(si.teams.find((t) => t.id === it[1]).score, 100);
+  }
+  console.log("ok instrumentos");
 }
 
 // ---------- "Um time por vez" ----------

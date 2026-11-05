@@ -4,6 +4,7 @@ import { CONTINUE_STAGES } from "@/modes/continue/stages";
 import { LYRICS_STAGES } from "@/modes/lyrics/stages";
 import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
 import { QUIZ_STAGES, isQuizMode } from "@/modes/quiz/logic";
+import { stemsOf, vocalsOnly } from "@/modes/stems/logic";
 import type { Attempt, RoomState, Round, Team, TiebreakState, TurnState } from "./types";
 
 /** "Um time por vez": de quem é a vez (null no "Quem sabe primeiro"). */
@@ -44,6 +45,7 @@ export function missingParts(s: RoomState, r: Round) {
   if (tiebreakOf(r)) return { artist: false, title: !r.found?.title }; // desempate: só a música
   if (r.mode === "continue") return { artist: false, title: !r.found?.title }; // continuar a letra: só a linha
   if (isQuizMode(r.mode) || r.mode === "obra") return { artist: false, title: !r.found?.title }; // quiz / obra: só a resposta
+  if (vocalsOnly(r)) return { artist: !r.found?.artist, title: !r.found?.title }; // só a voz: artista + bônus do título
   if (r.mode === "auction") {
     const hint = r.auction?.hint;
     return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
@@ -59,6 +61,8 @@ export const stagePoints = (r: Round) =>
     ? 0
     : r.mode === "auction"
       ? AUCTION_POINTS
+      : stemsOf(r)
+        ? Math.round((stemsOf(r)!.points[Math.max(0, Math.min(r.stage, stemsOf(r)!.points.length) - 1)] ?? 0) * (turnOf(r)?.factor ?? 1))
       : // um time por vez: depois de passar a vez, vale metade
         Math.round(
           ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : isQuizMode(r.mode) || r.mode === "obra" ? QUIZ_STAGES : CLASSIC_STAGES)[
@@ -72,6 +76,8 @@ export function partPoints(r: Round, part: "artist" | "title") {
   if (tiebreakOf(r)) return 0; // desempate não vale pontos
   if (r.mode === "auction") return AUCTION_POINTS;
   const pts = stagePoints(r);
+  // só a voz: o artista vale inteiro e o título é bônus (metade)
+  if (vocalsOnly(r)) return part === "artist" ? pts : artistPoints(pts);
   return part === "artist" ? artistPoints(pts) : pts;
 }
 

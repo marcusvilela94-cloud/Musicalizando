@@ -8,6 +8,7 @@ import { friendlyError } from "@/lib/errors";
 import { formatSeconds, lateTaps, missingParts, teamById } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { OBRA_ASK, obraOf } from "@/modes/obra/logic";
+import { vocalsOnly } from "@/modes/stems/logic";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
 import type { PhoneCtx } from "./PhoneApp";
 import { teamLabel } from "@/lib/icons";
@@ -158,7 +159,11 @@ export function AnswerForm({
           className={field(almost?.title === "doubt")}
         />
       )}
-      {need.artist && need.title && <p className="text-sm text-white/60">Basta um. Artista vale 50%, música 100%, os dois 150%.</p>}
+      {need.artist && need.title && (
+        <p className="text-sm text-white/60">
+          {vocalsOnly(round) ? "Basta um. Artista vale 100%, música +50% de bônus." : "Basta um. Artista vale 50%, música 100%, os dois 150%."}
+        </p>
+      )}
       <Button type="submit" disabled={busy || (!artist.trim() && !title.trim())} className="text-2xl py-4">
         {busy ? "Enviando…" : almost ? "Reenviar" : "Responder"}
       </Button>

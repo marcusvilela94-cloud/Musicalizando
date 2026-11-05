@@ -32,6 +32,7 @@ import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
 import { singing } from "@/modes/continue/logic";
 import { isQuizMode } from "@/modes/quiz/logic";
+import { stemsOf, stemsStageLabel, vocalsOnly } from "@/modes/stems/logic";
 import { teamLabel } from "@/lib/icons";
 
 type Answer = {
@@ -139,6 +140,8 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
                   ? "Continuar a letra"
                   : round.mode === "obra"
                     ? "Música inteira"
+                    : stemsOf(round)
+                      ? stemsStageLabel(stemsOf(round)!, round.stage)
                   : `Trecho ${round.stage} · ${stage.seconds}s`}
             {tb || round.mode === "quiz_choice" ? "" : ` · ${Math.round(stage.points * (turnOf(round)?.factor ?? 1))} pts`}
           </span>
@@ -193,7 +196,7 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
 
 function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; answer: Answer }) {
   const need = missingParts(state, round);
-  const both = state.room.settings.scoring === "artist_title";
+  const both = state.room.settings.scoring === "artist_title" || vocalsOnly(round);
   return (
     <div className="rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/10 p-3 text-left">
       <p className="text-xs uppercase tracking-wide text-emerald-300">Resposta certa (só você vê)</p>

@@ -23,7 +23,11 @@ export type Tiebreak = "sudden" | "accept";
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
-export type ModeId = "classic" | "auction" | "lyrics" | "continue" | "quiz_open" | "quiz_choice" | "obra";
+export type ModeId = "classic" | "auction" | "lyrics" | "continue" | "quiz_open" | "quiz_choice" | "obra" | "stems";
+/** Instrumentos: faixas separadas que o jogo usa. */
+export type StemName = "drums" | "bass" | "guitar" | "vocals";
+/** Instrumentos: "layers" = camadas (bateria → + baixo → + guitarra → + voz); "single" = um instrumento só. */
+export type StemsVariant = "layers" | "single";
 /** "Qual é a obra?": pacotes temáticos. */
 export type ObraPackId = "cinema" | "anime" | "novelas";
 /** "Formato da vez": quem sabe primeiro (EU SEI!) ou um time por vez (rodízio). */
@@ -51,6 +55,8 @@ export type RoomSettings = {
   turnFormat?: TurnFormat; // padrão "buzz"
   passOnWrong?: boolean; // um time por vez: errou, passa a vez valendo metade (padrão true)
   obraPacks?: ObraPackId[]; // "Qual é a obra?": pacotes ligados (padrão: todos)
+  stemsVariant?: StemsVariant; // Instrumentos (padrão "layers")
+  stemsInstrument?: StemName | "random"; // Instrumentos, um só (padrão "random")
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
@@ -71,6 +77,7 @@ export type PickedTrack = {
   mode?: ModeId; // modo planejado para a rodada desta posição
   cont?: ContinuePlan; // "Continuar a letra": linhas de contexto + a escondida (vai para npl_tracks, oculto)
   quiz?: QuizPlan; // quizzes: a pergunta com a resposta (vai para npl_tracks, oculto)
+  stems?: StemsPlan; // Instrumentos: faixas separadas (cache) e camadas/instrumento
   album_id?: number | null; // usado só para montar as perguntas
   artist_id?: number | null;
 };
@@ -119,6 +126,26 @@ export type QuizState = {
   emoji?: string; // "Qual é a obra?": dica do tipo de obra
   tipo?: "abertura" | "tema"; // "Qual é a obra?" (novelas), só na revelação
 };
+/** Instrumentos: plano da música (quem começa a partida monta a partir do cache). */
+export type StemsPlan = { key: string; variant: StemsVariant; layers?: StemName[]; instrument?: StemName };
+/** Instrumentos: o que todos veem na rodada (npl_rounds.stems). */
+export type StemsState = {
+  variant: StemsVariant;
+  key: string; // pasta no bucket npl_stems
+  layers?: StemName[]; // camadas, na ordem
+  instrument?: StemName; // um só
+  points: number[]; // pontos de cada estágio
+  secs?: number[]; // um só: duração de cada trecho
+};
+/** Instrumentos: estado do cache/fila/separador (npl_stems_status). */
+export type StemsStatus = {
+  worker: { last_seen: string | null; alive: boolean; info: Record<string, unknown> } | null;
+  ready: { deezer_id: number; key: string; audible: Partial<Record<StemName, boolean>> }[];
+  queue: Partial<Record<"pending" | "processing" | "error", number>>;
+  errors: { deezer_id: number; error: string | null }[];
+  cache: { songs: number; bytes: number };
+};
+
 /** "Um time por vez": de quem é a vez nesta rodada. */
 export type TurnState = { owner: string; team: string; order: string[]; tried: string[]; factor: number };
 
@@ -268,6 +295,7 @@ export type Round = {
   cont?: Partial<ContinueState>; // vazio ({}) fora do "Continuar a letra"
   quiz?: Partial<QuizState>; // vazio ({}) fora dos quizzes
   turn?: Partial<TurnState>; // vazio ({}) fora do "Um time por vez"
+  stems?: Partial<StemsState>; // vazio ({}) fora do Instrumentos
   created_at: string;
   started_at: string | null;
   revealed_at: string | null;

@@ -3,6 +3,7 @@ import { classicMode } from "./classic";
 import { continueMode } from "./continue";
 import { lyricsMode } from "./lyrics";
 import { obraMode } from "./obra";
+import { stemsMode } from "./stems";
 import { quizChoiceMode, quizOpenMode } from "./quiz";
 import type { ModeDef } from "./types";
 
@@ -15,6 +16,7 @@ export const MODES: Record<string, ModeDef> = {
   [quizOpenMode.id]: quizOpenMode,
   [quizChoiceMode.id]: quizChoiceMode,
   [obraMode.id]: obraMode,
+  [stemsMode.id]: stemsMode,
 };
 
 export const getMode = (id: string | null | undefined): ModeDef => MODES[id ?? ""] ?? classicMode;

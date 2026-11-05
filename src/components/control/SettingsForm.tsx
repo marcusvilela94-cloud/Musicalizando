@@ -4,7 +4,8 @@ import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
-import type { ArtistLevel, ModeId, MusicSource, ObraPackId, RoomSettings, RoomState, SfxVolume } from "@/lib/types";
+import type { ArtistLevel, ModeId, MusicSource, ObraPackId, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
+import { STEM_EMOJI, STEM_LABEL, STEM_ORDER } from "@/modes/stems/logic";
 import { getMode } from "@/modes";
 import { MODE_LIST, TURN_MODES, enabledModes, playingTeamCount, turnRounds, type ModeOrder } from "@/modes/schedule";
 
@@ -38,6 +39,8 @@ const MODE_HINTS: Record<ModeId, string> = {
     "Pergunta sem alternativas (ano, álbum, quem canta, capa, complete o título, curiosidade…) com a prévia tocando ao fundo. Quem souber aperta EU SEI! e responde. Vale 100 (no ano digitado, errar por 1 vale 50).",
   quiz_choice:
     "Estilo Kahoot: pergunta e alternativas na TV; todos os times respondem ao mesmo tempo pelo celular, no Tempo de resposta. Acerto vale de 100 (na hora) a 50 (no fim do prazo).",
+  stems:
+    "A música separada em instrumentos (no PC, pelo separador). Camadas: começa só a bateria e cada “Próxima camada” soma um instrumento (baixo, guitarra, voz): 100, 75, 50 e 20. Um instrumento só: trechos de 5, 15 e 30 s de uma faixa (100, 60, 30); com a voz vale o artista e o título é bônus.",
   obra:
     "Trilhas e aberturas dos pacotes escolhidos tocando inteiras (sem trechos): quem souber aperta EU SEI! e diz o FILME, o ANIME ou a NOVELA. Vale 100. A TV mostra o emoji do pacote como dica. Usa só as músicas dos pacotes (não as fontes).",
 };
@@ -51,9 +54,9 @@ const ORDER_HINTS: Record<ModeOrder, string> = {
 /** Em quais modos cada opção vale (para esconder ou etiquetar). Opções fora daqui valem para todos. */
 const APPLIES = {
   clips: ["classic"] as ModeId[], // Trechos
-  scoring: ["classic", "lyrics"] as ModeId[], // O que vale
+  scoring: ["classic", "lyrics", "stems"] as ModeId[], // O que vale (Instrumentos com a voz: vale o artista)
   turns: TURN_MODES, // Formato da vez: classic, lyrics, continue, quiz_open, obra
-  buzzRules: ["classic", "lyrics", "continue", "quiz_open", "obra"] as ModeId[], // Bloqueio e Penalidade (só "Quem sabe primeiro")
+  buzzRules: ["classic", "lyrics", "continue", "quiz_open", "obra", "stems"] as ModeId[], // Bloqueio e Penalidade (só "Quem sabe primeiro")
   curiosities: ["quiz_open", "quiz_choice"] as ModeId[], // Perguntas de curiosidade
 };
 
@@ -233,6 +236,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             );
           })}
         </div>
+        {on.includes("stems") && <StemsPanel settings={settings} update={update} code={code} token={token} />}
         {on.includes("obra") && (
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-black/20 p-3">
             <p className="font-display text-lg">🎭 Pacotes</p>
@@ -456,6 +460,171 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
       <div className="flex justify-end">
         <Button className="text-2xl px-10 py-4" onClick={onDone}>Pronto! Montar times →</Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Instrumentos: variante, instrumento e o preparo das músicas. A separação roda
+ * no PC (separador/); aqui só pedimos (fila) e lemos o cache.
+ */
+function StemsPanel({
+  settings,
+  update,
+  code,
+  token,
+}: {
+  settings: RoomSettings;
+  update: (patch: Partial<RoomSettings>) => void;
+  code: string;
+  token: string;
+}) {
+  const variant = settings.stemsVariant ?? "layers";
+  const instrument = settings.stemsInstrument ?? "random";
+  const vf = settings.versionFilter !== false;
+  const srcKey = JSON.stringify([settings.sources, vf]);
+  const [pool, setPool] = useState<{ key: string; ids: number[] } | null>(null);
+  const [poolError, setPoolError] = useState<string | null>(null);
+  const [status, setStatus] = useState<StemsStatus | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ids = pool?.key === srcKey ? pool.ids : null;
+
+  // músicas das fontes (até 150)
+  useEffect(() => {
+    let alive = true;
+    const [sources, versionFilter] = JSON.parse(srcKey) as [MusicSource[], boolean];
+    const t = setTimeout(() => {
+      deezer
+        .pool(sources, versionFilter)
+        .then((r) => {
+          if (!alive) return;
+          setPool({ key: srcKey, ids: r.tracks.map((x) => x.deezer_id) });
+          setPoolError(null);
+        })
+        .catch((e) => alive && setPoolError(friendlyError(e)));
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [srcKey]);
+
+  // cache, fila e separador (atualiza a cada 5 s)
+  const idsKey = ids ? ids.join(",") : "";
+  useEffect(() => {
+    let alive = true;
+    const list = idsKey ? idsKey.split(",").map(Number) : [];
+    const tick = () =>
+      api
+        .stemsStatus(list)
+        .then((st) => alive && setStatus(st))
+        .catch(() => {});
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [idsKey]);
+
+  const workerOn = !!status?.worker?.alive;
+  const ready = status?.ready.length ?? 0;
+  const pending = (status?.queue.pending ?? 0) + (status?.queue.processing ?? 0);
+  const errors = status?.queue.error ?? 0;
+  const total = ids?.length ?? 0;
+  const current = workerOn && typeof status?.worker?.info?.current === "string" ? (status.worker.info.current as string) : null;
+  const mb = (status?.cache.bytes ?? 0) / 1048576;
+
+  const prepare = async () => {
+    if (!ids) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const have = new Set(status?.ready.map((r) => r.deezer_id));
+      const n = await api.stemsRequest(code, token, ids.filter((id) => !have.has(id)));
+      setMsg(n ? `${n} música${n === 1 ? "" : "s"} na fila.` : "Nada novo para pedir: as que faltam já estão na fila.");
+      setStatus(await api.stemsStatus(ids));
+    } catch (e) {
+      setMsg(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl bg-black/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-display text-lg">🥁 Instrumentos</p>
+        <Segmented
+          value={variant}
+          onChange={(v) => update({ stemsVariant: v })}
+          options={[
+            ["layers", "Camadas"],
+            ["single", "Um instrumento só"],
+          ]}
+        />
+        <Help
+          text={
+            variant === "layers"
+              ? "Começa só a bateria; cada “Próxima camada” soma um instrumento, tocando juntos: + baixo, + guitarra (pulada quando a música não tem), + voz. 100, 75, 50 e 20 pontos."
+              : "Toca só um instrumento, em trechos de 5, 15 e 30 s (100, 60 e 30). Se o instrumento escolhido estiver vazio na música, sorteia outro. Com a voz, vale o artista e o título é bônus."
+          }
+        />
+      </div>
+      {variant === "single" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-white/70">Instrumento:</p>
+          <Segmented<StemName | "random">
+            value={instrument}
+            onChange={(v) => update({ stemsInstrument: v })}
+            options={[...STEM_ORDER.map((n) => [n, `${STEM_EMOJI[n]} ${STEM_LABEL[n]}`] as [StemName, string]), ["random", "🎲 Sortear"]]}
+          />
+        </div>
+      )}
+      <div className={`rounded-xl px-3 py-2 text-sm ${workerOn ? "bg-emerald-500/15 text-emerald-100" : "bg-rose-500/20 text-rose-100"}`}>
+        {status === null ? (
+          "Verificando o separador…"
+        ) : workerOn ? (
+          <>
+            🟢 Separador ligado
+            {current ? (
+              <>
+                {" "}
+                — separando: <b>{current}</b>
+              </>
+            ) : null}
+          </>
+        ) : (
+          "🔴 Separador desligado — ligue o programa no PC para preparar músicas novas."
+        )}
+      </div>
+      {poolError ? (
+        <p className="text-sm text-rose-300">Não consegui listar as músicas das fontes: {poolError}</p>
+      ) : !ids ? (
+        <p className="text-sm text-white/60">Contando as músicas das fontes…</p>
+      ) : (
+        <>
+          <p className="font-display text-lg">
+            {ready} de {total} músicas das fontes prontas
+            {pending > 0 && <span className="text-white/70"> · {pending} na fila</span>}
+            {errors > 0 && <span className="text-rose-300"> · {errors} com erro</span>}
+          </p>
+          <div className="h-3 w-full overflow-hidden rounded-full bg-white/15">
+            <div className="h-full rounded-full bg-yellow-300 transition-all" style={{ width: `${total ? Math.round((ready / total) * 100) : 0}%` }} />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" disabled={busy || ready >= total} onClick={prepare}>
+              {busy ? "Pedindo…" : "Preparar instrumentos destas fontes"}
+            </Button>
+            {msg && <span className="text-sm text-white/80">{msg}</span>}
+          </div>
+          <p className="text-xs text-white/50">
+            Cache: {status?.cache.songs ?? 0} músicas · {mb.toFixed(0)} de 200 MB (as usadas há mais tempo saem quando enche).
+            {!workerOn && pending > 0 && " Os pedidos ficam guardados até o separador ligar."}
+          </p>
+        </>
+      )}
     </div>
   );
 }

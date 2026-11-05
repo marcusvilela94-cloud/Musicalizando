@@ -10,6 +10,7 @@ import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
 import { contOf, singing } from "@/modes/continue/logic";
 import { lyricsOf } from "@/modes/lyrics/LyricsView";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
+import { STEM_EMOJI, STEM_LABEL, stemsOf, vocalsOnly } from "@/modes/stems/logic";
 
 /** Ações de quem comanda a partida (TV no "Todos jogam" ou celular do apresentador). */
 export function useGameActions(state: RoomState, code: string, token: string, serverNow: () => number = Date.now) {
@@ -30,7 +31,9 @@ export function useGameActions(state: RoomState, code: string, token: string, se
   const lyrics = lyricsOf(round);
   // continuar a letra: até 3 estágios (2, 3 e 4 linhas de contexto)
   const cont = contOf(round);
-  const lastStage = !!round && round.stage >= (lyrics ? lyrics.total : cont ? cont.max : stages.length);
+  // Instrumentos: os estágios vêm da rodada (camadas audíveis desta música)
+  const stemsSt = stemsOf(round);
+  const lastStage = !!round && round.stage >= (lyrics ? lyrics.total : cont ? cont.max : stemsSt ? stemsSt.points.length : stages.length);
   // Leilão: "Tocar" só na prova em fila, uma vez por time
   const auction = auctionOf(round);
   const auctionPlay = !!auction && auction.phase === "proving" && !entryPlayed(auction);
@@ -143,7 +146,13 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
               </Button>
             ) : (
               <Button variant="secondary" className={big} disabled={!can.next} onClick={actions.next}>
-                ⏭ Próximo trecho{nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}
+                {stemsOf(round)?.variant === "layers" ? (
+                  <>⏭ Próxima camada (+ {STEM_EMOJI[stemsOf(round)!.layers![round.stage]]} {STEM_LABEL[stemsOf(round)!.layers![round.stage]]} · {stemsOf(round)!.points[round.stage]})</>
+                ) : stemsOf(round) ? (
+                  <>⏭ Próximo trecho ({stemsOf(round)!.secs?.[round.stage]}s · {stemsOf(round)!.points[round.stage]})</>
+                ) : (
+                  <>⏭ Próximo trecho{nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}</>
+                )}
                 {k("→")}
               </Button>
             )}
@@ -199,7 +208,8 @@ export function OverrideButtons({
   const hint = auctionOf(r)?.hint;
   // desempate: só a música vale
   const both =
-    !hint && !tiebreakOf(r) && r?.mode !== "continue" && r?.mode !== "obra" && !isQuizMode(r?.mode) && state.room.settings.scoring === "artist_title";
+    !hint && !tiebreakOf(r) && r?.mode !== "continue" && r?.mode !== "obra" && !isQuizMode(r?.mode) &&
+    (state.room.settings.scoring === "artist_title" || vocalsOnly(r));
   const art = attempt.artist_result === "ok";
   const tit = attempt.title_result === "ok";
   const set = (a: boolean, t: boolean) => api.overrideParts(code, token, attempt.id, a, t).catch((e) => onError(friendlyError(e)));
