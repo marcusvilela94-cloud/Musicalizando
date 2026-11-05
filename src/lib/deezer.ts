@@ -1,6 +1,7 @@
 // Acesso à API pública do Deezer. SÓ roda no servidor (rotas /api/deezer/*):
 // o Deezer bloqueia chamadas diretas do navegador por CORS.
 import "server-only";
+import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
 import type { MusicSource, PickedTrack, TrackMeta } from "./types";
 
 const API = "https://api.deezer.com";
@@ -18,6 +19,7 @@ type DzTrack = {
   title: string;
   title_short?: string;
   title_version?: string;
+  isrc?: string;
   preview?: string;
   artist: DzArtist;
   contributors?: DzArtist[];
@@ -214,10 +216,13 @@ const genreOf =(a: DzAlbum | null) =>
 const metaCache = new Map<string, Promise<TrackMeta>>();
 
 /**
- * Procura no Deezer a mesma música do mesmo artista principal (busca por
- * artista + faixa) e usa o MENOR ano entre os álbuns/singles encontrados,
- * ignorando coletâneas, versões (ao vivo, remix…) e remasters. Sem resultado
- * confiável -> year null (a rodada usa a dica "Artista").
+ * Ano original da música = o MENOR entre:
+ *  - MusicBrainz pelo ISRC da faixa (a gravação exata; remasters costumam
+ *    apontar para a gravação original, com a data de 1º lançamento);
+ *  - MusicBrainz por título + artista (gravações de estúdio do mesmo artista);
+ *  - Deezer: álbuns/singles com a mesma música do mesmo artista principal,
+ *    sem coletâneas e sem outras versões (ao vivo, remix…).
+ * Sem resultado confiável -> year null (a rodada usa a dica "Artista").
  */
 export function getAuctionMeta(id: string): Promise<TrackMeta> {
   let p = metaCache.get(id);
@@ -235,6 +240,7 @@ async function computeAuctionMeta(id: string): Promise<TrackMeta> {
   const own = await getAlbum(t.album?.id);
   const name = t.artist?.name ?? "";
   const short = t.title_short ?? t.title;
+  const mbYearP = musicBrainzYear(t.isrc, short, name); // em paralelo com o Deezer
   const q = `artist:"${name.replace(/"/g, "")}" track:"${short.replace(/"/g, "")}"`;
   const search = (query: string) =>
     dz<DzList<DzTrack>>(`/search/track?q=${encodeURIComponent(query)}&limit=50`).catch(() => ({ data: [] }) as DzList<DzTrack>);
@@ -261,10 +267,34 @@ async function computeAuctionMeta(id: string): Promise<TrackMeta> {
     .map((a) => ({ a, year: albumYear(a) }))
     .filter((x): x is { a: DzAlbum; year: number } => x.year !== null)
     .sort((x, y) => x.year - y.year);
-  const year = dated[0]?.year ?? null;
+  // MusicBrainz lento/fora do ar: no máximo 8 s de espera (a TV desiste em 12 s)
+  const mbYearOrNull = await Promise.race([mbYearP, new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
+  const years = [dated[0]?.year ?? null, mbYearOrNull].filter((y): y is number => y !== null);
+  const year = years.length ? Math.min(...years) : null;
   // gênero: o do álbum da faixa (se não for coletânea); senão o do lançamento mais antigo
   const genre = (!isCompilationAlbum(own) ? genreOf(own) : null) ?? dated.map((x) => genreOf(x.a)).find(Boolean) ?? null;
   return { genre, year, compilation: false, track_year: yearOf(own?.release_date) };
+}
+
+/** Gravação ao vivo/acústica/cover pelo ISRC: não é a original. ("international mix" vale.) */
+const MB_LIVE_RE = /\b(live|ao vivo|acoustic|acustico|unplugged|cover|karaoke|instrumental|re ?recorded|demo)\b/;
+
+/** Menor ano de 1º lançamento no MusicBrainz (null se não achou nada confiável). */
+async function musicBrainzYear(isrc: string | undefined, title: string, artist: string): Promise<number | null> {
+  const [byIsrc, bySearch] = await Promise.all([isrc ? recordingsByIsrc(isrc) : [], searchRecordings(title, artist)]);
+  const key = norm(title);
+  const artistKey = norm(artist);
+  const fromIsrc = byIsrc.filter((r) => !MB_LIVE_RE.test(fold(r.disambiguation ?? "")));
+  const fromSearch = bySearch.filter(
+    (r) =>
+      !r.video &&
+      norm(r.title) === key &&
+      !VERSION_RE.test(titleVersionText({ title: r.title })) &&
+      !VERSION_RE.test(fold(r.disambiguation ?? "")) &&
+      (r["artist-credit"] ?? []).some((c) => norm(c.name) === artistKey || norm(c.artist?.name ?? "") === artistKey),
+  );
+  const years = [...fromIsrc, ...fromSearch].map(mbYear).filter((y): y is number => y !== null);
+  return years.length ? Math.min(...years) : null;
 }
 
 function shuffle<T>(arr: T[]): T[] {
