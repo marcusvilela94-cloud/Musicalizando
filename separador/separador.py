@@ -52,14 +52,17 @@ def load_env() -> dict[str, str]:
     env: dict[str, str] = {}
     f = HERE / ".env"
     if f.exists():
-        for line in f.read_text(encoding="utf-8").splitlines():
+        for line in f.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
             env[k.strip()] = v.strip().strip('"').strip("'")
-    for k in list(env):
-        env[k] = os.environ.get(k, env[k])
+    # variáveis de ambiente valem mais que o arquivo (ex.: num servidor, sem .env)
+    for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CACHE_LIMITE_MB", "INTERVALO_FILA_SEGUNDOS",
+              "LIMIAR_SILENCIO_DB", "MP3_KBPS", *env):
+        if os.environ.get(k):
+            env[k] = os.environ[k]
     return env
 
 
@@ -68,15 +71,27 @@ URL = ENV.get("SUPABASE_URL", "").rstrip("/")
 KEY = ENV.get("SUPABASE_SERVICE_ROLE_KEY", "")
 LIMIT_MB = float(ENV.get("CACHE_LIMITE_MB", "200"))
 POLL_S = float(ENV.get("INTERVALO_FILA_SEGUNDOS", "5"))
-SILENCE_DB = float(ENV.get("LIMIAR_SILENCIO_DB", "-24"))  # abaixo da mistura: "sem conteúdo"
+SILENCE_DB = float(ENV.get("LIMIAR_SILENCIO_DB", "-16"))  # abaixo da mistura: "sem conteúdo"
 FLOOR_DB = -50.0  # abaixo disso é silêncio em qualquer música
 BITRATE = int(ENV.get("MP3_KBPS", "64"))
 BUCKET = "npl_stems"
 
 if not URL or not KEY or "COLE" in KEY:
     log("❌ Falta configurar o separador/.env (SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY).")
-    log("   Copie separador/.env.example para separador/.env e preencha.")
+    if (HERE / ".env").exists():
+        log("   Abra o separador/.env e cole a chave service_role (Supabase > Project Settings > API Keys).")
+    else:
+        log("   Copie separador/.env.example para separador/.env e preencha.")
     sys.exit(1)
+
+# Usa os certificados do Windows (antivírus que inspeciona HTTPS assina as conexões
+# com um certificado próprio, que o Windows conhece e o Python sozinho não)
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except Exception:
+    pass
 
 import requests  # noqa: E402  (depois de conferir o .env, para a mensagem sair mesmo sem as dependências)
 
