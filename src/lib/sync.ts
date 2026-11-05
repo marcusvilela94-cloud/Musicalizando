@@ -244,13 +244,13 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
  *    concordando (lrc - início) com a mediana em até 1 s;
  *  - todas as linhas da prévia usam os tempos do LRC (com o offset);
  *  - o trecho começa na 1ª linha COMPLETA da prévia e vai até a escondida;
- *  - linha escondida: pelo menos 10 s de música antes dela (desde o início do
- *    trecho) e 8 s depois do fim (para cantar junto), 4 a 12 palavras, até
+ *  - linha escondida: pelo menos 8 s de música antes dela (desde o início do
+ *    trecho) e 6 s depois do fim (para cantar junto), 4 a 12 palavras, até
  *    ~3,5 palavras/s, não é coro entre parênteses, onomatopeia nem o nome do
  *    artista, confiança >= 70%. Preferência: as que mais se repetem (refrão).
  */
-const MIN_BEFORE = 10;
-const MIN_AFTER = 8;
+const MIN_BEFORE = 8;
+const MIN_AFTER = 6;
 
 function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): ContinueVerdict {
   if (!lines.length || lines.some((l) => l.lrc === null)) return { ok: false, reason: "sem letra sincronizada (LRC)" };
