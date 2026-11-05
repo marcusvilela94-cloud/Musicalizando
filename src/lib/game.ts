@@ -3,7 +3,17 @@ import { CLASSIC_STAGES } from "@/modes/classic/stages";
 import { CONTINUE_STAGES } from "@/modes/continue/stages";
 import { LYRICS_STAGES } from "@/modes/lyrics/stages";
 import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
-import type { Attempt, RoomState, Round, Team, TiebreakState } from "./types";
+import { QUIZ_STAGES, isQuizMode } from "@/modes/quiz/logic";
+import type { Attempt, RoomState, Round, Team, TiebreakState, TurnState } from "./types";
+
+/** "Um time por vez": de quem é a vez (null no "Quem sabe primeiro"). */
+export function turnOf(r: Round | null | undefined): TurnState | null {
+  const t = r?.turn;
+  return t && typeof t.team === "string" && Array.isArray(t.order) ? (t as TurnState) : null;
+}
+
+/** A vez do time está aberta (a música/pista segue tocando enquanto ele responde). */
+export const turnOpen = (r: Round | null | undefined) => !!turnOf(r) && r!.status === "answering";
 
 /** Estado do desempate (null fora da morte súbita). */
 export function tiebreakOf(r: Round | null | undefined): TiebreakState | null {
@@ -33,6 +43,7 @@ export function suddenDeathWinner(s: RoomState): Team | null {
 export function missingParts(s: RoomState, r: Round) {
   if (tiebreakOf(r)) return { artist: false, title: !r.found?.title }; // desempate: só a música
   if (r.mode === "continue") return { artist: false, title: !r.found?.title }; // continuar a letra: só a linha
+  if (isQuizMode(r.mode)) return { artist: false, title: !r.found?.title }; // quiz: só a resposta
   if (r.mode === "auction") {
     const hint = r.auction?.hint;
     return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
@@ -48,7 +59,12 @@ export const stagePoints = (r: Round) =>
     ? 0
     : r.mode === "auction"
       ? AUCTION_POINTS
-      : ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : CLASSIC_STAGES)[Math.max(0, r.stage - 1)]?.points ?? 0);
+      : // um time por vez: depois de passar a vez, vale metade
+        Math.round(
+          ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : isQuizMode(r.mode) ? QUIZ_STAGES : CLASSIC_STAGES)[
+            Math.max(0, r.stage - 1)
+          ]?.points ?? 0) * (turnOf(r)?.factor ?? 1),
+        );
 export const artistPoints = (pts: number) => Math.round(pts * 0.5);
 
 /** Quanto vale acertar cada parte agora. */
@@ -59,8 +75,12 @@ export function partPoints(r: Round, part: "artist" | "title") {
   return part === "artist" ? artistPoints(pts) : pts;
 }
 
-/** "artista", "música", "artista e música" ou "" (o que a tentativa acertou). */
-export function attemptParts(a: Attempt) {
+/**
+ * "artista", "música", "artista e música" ou "" (o que a tentativa acertou).
+ * Nos modos em que só vale uma coisa (quiz, continuar a letra) é "".
+ */
+export function attemptParts(a: Attempt, mode?: string | null) {
+  if (mode && (isQuizMode(mode) || mode === "continue")) return "";
   const parts = [a.artist_result === "ok" && "artista", a.title_result === "ok" && "música"].filter(Boolean);
   return parts.join(" e ");
 }

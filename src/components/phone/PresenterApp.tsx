@@ -26,13 +26,22 @@ import {
   finalRanking,
   tiebreakLeft,
   tiebreakOf,
+  turnOf,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
 import { singing } from "@/modes/continue/logic";
+import { isQuizMode } from "@/modes/quiz/logic";
 import { teamLabel } from "@/lib/icons";
 
-type Answer = { round_id: string; title: string; artist: string; artists: string[]; line?: string | null } | null;
+type Answer = {
+  round_id: string;
+  title: string;
+  artist: string;
+  artists: string[];
+  line?: string | null;
+  quiz?: { q: string; answer: string; kind: string; hide_song?: boolean } | null;
+} | null;
 
 /** Celular do apresentador (estilo "Com apresentador"): ele não joga, só comanda. */
 export function PresenterApp({ code, token }: { code: string; token: string }) {
@@ -122,8 +131,14 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
         )}
         {stage && round.status !== "loading" && (
           <span className="text-lg text-white/80">
-            {round.mode === "lyrics" ? `Verso ${round.stage}` : `Trecho ${round.stage} · ${stage.seconds}s`}
-            {tb ? "" : ` · ${stage.points} pts`}
+            {round.mode === "lyrics"
+              ? `Verso ${round.stage}`
+              : isQuizMode(round.mode)
+                ? "Pergunta"
+                : round.mode === "continue"
+                  ? "Continuar a letra"
+                  : `Trecho ${round.stage} · ${stage.seconds}s`}
+            {tb || round.mode === "quiz_choice" ? "" : ` · ${Math.round(stage.points * (turnOf(round)?.factor ?? 1))} pts`}
           </span>
         )}
       </div>
@@ -180,6 +195,13 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
   return (
     <div className="rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/10 p-3 text-left">
       <p className="text-xs uppercase tracking-wide text-emerald-300">Resposta certa (só você vê)</p>
+      {answer?.quiz && (
+        <div className="mb-2 rounded-xl bg-yellow-300 px-3 py-2 text-violet-950">
+          <p className="text-sm">❓ {answer.quiz.q}</p>
+          <p className="font-display text-2xl font-bold">✅ {answer.quiz.answer} {!need.title && "✓"}</p>
+          {answer.quiz.hide_song && <p className="text-xs">A música de fundo não tem relação com a pergunta (não é revelada).</p>}
+        </div>
+      )}
       {answer?.line && round.mode === "continue" && (
         <p className="mb-2 rounded-xl bg-yellow-300 px-3 py-2 font-display text-2xl font-bold text-violet-950">
           🎤 “{answer.line}” {!need.title && "✓"}
@@ -188,7 +210,7 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
       {answer ? (
         <>
           <p className="font-display text-2xl font-bold">
-            🎵 {answer.title} {!need.title && round.mode !== "continue" && <span className="text-emerald-300">✓</span>}
+            🎵 {answer.title} {!need.title && round.mode !== "continue" && !isQuizMode(round.mode) && <span className="text-emerald-300">✓</span>}
           </p>
           <p className="font-display text-xl text-pink-200">
             🎤 {artistCredits(answer)}{" "}
@@ -227,7 +249,11 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
   return (
     <div className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: `${team.color}33`, border: `3px solid ${team.color}` }}>
       <div className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: team.color, color: textOn(team.color) }}>
-        <span className="font-display text-xl font-bold">{teamLabel(team)} {spoken ? "vai falar" : "está digitando"}</span>
+        <span className="font-display text-xl font-bold">
+          {turnOf(round) ? "Vez de " : ""}
+          {teamLabel(team)} {spoken ? "vai falar" : "está digitando"}
+          {turnOf(round) && attempt.steal ? " (metade)" : ""}
+        </span>
         <span className="font-display text-4xl font-bold tabular-nums">{left !== null ? Math.ceil(left / 1000) : "∞"}</span>
       </div>
       {spoken ? (
@@ -236,7 +262,7 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo{pts(partPoints(round, "artist"))}</Button>
           )}
           {need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>{round.mode === "continue" ? "✅ Acertou" : "🎵 Música certa"}{pts(partPoints(round, "title"))}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>{round.mode === "continue" || isQuizMode(round.mode) ? "✅ Acertou" : "🎵 Música certa"}{pts(partPoints(round, "title"))}</Button>
           )}
           {need.artist && need.title && (
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois{pts(partPoints(round, "artist") + partPoints(round, "title"))}</Button>
@@ -265,8 +291,14 @@ function DoubtCard({ state, attempt, answer, code, token }: { state: RoomState; 
   const rows: [string, string | null, string, string | null][] = [];
   if (attempt.answer_artist !== null || attempt.artist_result === "doubt")
     rows.push(["Artista", attempt.answer_artist, answer ? artistCredits(answer) : "…", attempt.artist_result]);
-  const contRound = state.rounds.find((r) => r.id === attempt.round_id)?.mode === "continue";
-  rows.push(contRound ? ["Linha", attempt.answer_title, answer?.line ?? "…", attempt.title_result] : ["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result]);
+  const roundMode = state.rounds.find((r) => r.id === attempt.round_id)?.mode;
+  rows.push(
+    roundMode === "continue"
+      ? ["Linha", attempt.answer_title, answer?.line ?? "…", attempt.title_result]
+      : isQuizMode(roundMode)
+        ? ["Resposta", attempt.answer_title, answer?.quiz?.answer ?? "…", attempt.title_result]
+        : ["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result],
+  );
   return (
     <div className="flex flex-col gap-3 rounded-2xl border-4 border-yellow-300 bg-white/10 p-3">
       <p className="text-center font-display text-3xl font-bold text-yellow-300">Valeu ou não valeu?</p>
@@ -301,7 +333,7 @@ function Decisions({ state, round, code, token }: { state: RoomState; round: Rou
             <div className="flex flex-wrap items-center gap-2">
               {t && <TeamChip team={t} />}
               <span className={a.status === "correct" ? "text-emerald-300" : "text-rose-300"}>
-                {a.status === "correct" ? `acertou ${attemptParts(a)}` : a.status === "timeout" ? "tempo esgotado" : "errou"}
+                {a.status === "correct" ? `acertou ${attemptParts(a, round.mode)}`.trim() : a.status === "timeout" ? "tempo esgotado" : "errou"}
               </span>
               <span className="font-display">{a.points > 0 ? `+${a.points}` : a.points || ""}</span>
             </div>

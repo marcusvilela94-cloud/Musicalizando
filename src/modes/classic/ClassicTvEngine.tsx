@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import type { PlayHandle } from "@/lib/audio";
+import { turnOpen } from "@/lib/game";
 import type { TvEngineProps } from "../types";
 import { CLASSIC_STAGES } from "./stages";
 
@@ -22,7 +23,8 @@ export function ClassicTvEngine({ round, paused, buffer, audio, serverNow, onPla
     onPlayingRef.current = onPlayingChange;
   }, [onPlayingChange]);
 
-  const open = round.status === "playing" && !paused;
+  // um time por vez: a música continua enquanto o time da vez responde
+  const open = (round.status === "playing" || turnOpen(round)) && !paused;
 
   // rodada fechou (alguém apertou), pausou ou trocou de música: silêncio
   useEffect(() => {

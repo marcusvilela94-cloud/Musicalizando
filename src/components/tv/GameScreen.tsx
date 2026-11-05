@@ -28,6 +28,7 @@ import {
   tiebreakDecider,
   tiebreakLeft,
   tiebreakOf,
+  turnOf,
 } from "@/lib/game";
 import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
@@ -36,6 +37,8 @@ import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import { ContinueRevealLine, ContinueStack, SingAlong } from "@/modes/continue/ContinueView";
 import { CONT_STOP_BEFORE, contOf, singUntil } from "@/modes/continue/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
+import { isQuizMode, quizOf } from "@/modes/quiz/logic";
+import { QuizQuestion, QuizRevealTv } from "@/modes/quiz/QuizViews";
 import { enabledModes } from "@/modes/schedule";
 import type { TvRoundViewProps } from "@/modes/types";
 import type { TvCtx } from "./TvApp";
@@ -127,12 +130,17 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const lastBuzz = useRef<string | null>(null);
   // (no leilão a vez abre junto com o "Tocar": nada de parar o som)
   const openAttemptId = attempt?.status === "open" && !isAuction(round) ? attempt.id : null;
+  const turnMode = !!turnOf(round);
   useEffect(() => {
     if (!openAttemptId || lastBuzz.current === openAttemptId) return;
     lastBuzz.current = openAttemptId;
+    if (turnMode) {
+      sfx.play("mode"); // "Vez do time X!": a música continua
+      return;
+    }
     audio.stopAll();
     sfx.play("buzz");
-  }, [openAttemptId, audio, sfx]);
+  }, [openAttemptId, turnMode, audio, sfx]);
 
   // acerto / erro
   const latest = round
@@ -140,7 +148,16 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
         .filter((a) => a.round_id === round.id && a.kind === "turn" && a.decided_at && ["correct", "wrong", "timeout"].includes(a.status))
         .sort((a, b) => Date.parse(b.decided_at!) - Date.parse(a.decided_at!))[0]
     : undefined;
-  const latestKey = latest ? `${latest.id}:${latest.status}:${latest.artist_result}:${latest.title_result}` : null;
+  // alternativas: um som só, na revelação (acerto se algum time acertou)
+  const choiceDone = round?.mode === "quiz_choice" && (round.status === "revealed" || round.status === "scoreboard");
+  const latestKey =
+    round?.mode === "quiz_choice"
+      ? choiceDone && !round.skipped
+        ? `${round.id}:${round.winner_team_id ? "correct" : "wrong"}`
+        : null
+      : latest
+        ? `${latest.id}:${latest.status}:${latest.artist_result}:${latest.title_result}`
+        : null;
   const seenDecision = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (seenDecision.current === undefined) {
@@ -248,7 +265,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       r.announced = true;
       // acerto já tocou o som de acerto; sem vencedor toca o som de revelação
       const winner = !!currentRound(state)?.winner_team_id;
-      if (!winner) sfx.play("reveal");
+      // alternativas: o som de acerto/erro já tocou
+      if (!winner && currentRound(state)?.mode !== "quiz_choice") sfx.play("reveal");
       delay = sfx.enabled ? Math.max(REVEAL_MUSIC_DELAY_MS, sfx.length(winner ? "correct" : "reveal") * 1000) : 0;
     }
     let handle: PlayHandle | null = null;
@@ -434,7 +452,7 @@ function StageBar({ round }: { round: Round }) {
 function Worth({ state, round }: { state: RoomState; round: Round }) {
   const pts = stagePoints(round);
   const need = missingParts(state, round);
-  if (state.room.settings.scoring === "title" || round.mode === "continue") {
+  if (state.room.settings.scoring === "title" || round.mode === "continue" || isQuizMode(round.mode)) {
     return <span>Valendo <b className="text-yellow-300 text-5xl">{pts}</b> pts</span>;
   }
   if (need.artist && need.title) {
@@ -470,7 +488,8 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
   const tb = tiebreakOf(round);
   return (
     <div className="flex w-full flex-col items-center gap-6">
-      {!contOf(round) && <StageBar round={round} />}
+      {!contOf(round) && !isQuizMode(round.mode) && <StageBar round={round} />}
+      {quizOf(round) && <QuizQuestion round={round} now={now} />}
       {tb && <TiebreakBoard state={state} tb={tb} />}
       <div className="flex flex-wrap items-center justify-center gap-4 font-display text-3xl">
         {tb ? (
@@ -492,19 +511,19 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
       )}
       {round.status === "playing" && (
         <div className="flex flex-col items-center gap-4 text-pink-300">
-          {lyricsOf(round) || contOf(round) ? null : clipPlaying ? (
+          {lyricsOf(round) || contOf(round) || quizOf(round)?.play === false ? null : clipPlaying ? (
             <Equalizer className="h-24 [&>span]:w-5" />
           ) : (
             <p className="font-display text-3xl text-white/60">
-              {round.played_stage === 0 ? "🎧 Prontos? A música vai começar…" : "⏸ Trecho terminou"}
+              {round.played_stage === 0 ? (quizOf(round) ? "🎧 A música vai tocar ao fundo…" : "🎧 Prontos? A música vai começar…") : "⏸ Trecho terminou"}
             </p>
           )}
           <p className="font-display text-4xl text-white">
-            {contOf(round) ? "Sabe a próxima linha?" : "Sabe qual é?"} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
+            {contOf(round) ? "Sabe a próxima linha?" : quizOf(round) ? "Sabe a resposta?" : "Sabe qual é?"} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
           </p>
         </div>
       )}
-      {round.status === "answering" && attempt && <TurnPanel state={state} attempt={attempt} now={now} />}
+      {round.status === "answering" && attempt && <TurnPanel state={state} round={round} attempt={attempt} now={now} clipPlaying={clipPlaying} />}
       {round.status === "doubt" && attempt && (
         <div className="npl-pop flex flex-col items-center gap-4 rounded-[2.5rem] border-4 border-yellow-300 bg-white/10 p-8">
           {teamById(state, attempt.team_id) && <TeamChip team={teamById(state, attempt.team_id)!} className="text-3xl px-6 py-2" />}
@@ -515,19 +534,28 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
   );
 }
 
-function TurnPanel({ state, attempt, now }: { state: RoomState; attempt: Attempt; now: number }) {
+function TurnPanel({ state, round, attempt, now, clipPlaying }: { state: RoomState; round: Round; attempt: Attempt; now: number; clipPlaying: boolean }) {
   const team = teamById(state, attempt.team_id);
+  const turn = turnOf(round);
   const player = state.players.find((p) => p.id === attempt.player_id);
   const left = attempt.deadline ? Math.max(0, Date.parse(attempt.deadline) - now) : null;
   const late = lateTaps(state, attempt);
   const spoken = state.room.settings.roomStyle === "host" && state.room.settings.answerMode === "spoken";
   if (!team) return null;
   return (
-    <div className="npl-pop flex w-full max-w-4xl flex-col items-center gap-4 rounded-[2.5rem] p-8 text-center" style={{ background: team.color, color: textOn(team.color) }}>
-      <p className="font-display text-3xl opacity-80">{player ? playerLabel(player) : "Alguém"} apertou!</p>
+    <div key={attempt.id} className="npl-pop flex w-full max-w-4xl flex-col items-center gap-4 rounded-[2.5rem] p-8 text-center" style={{ background: team.color, color: textOn(team.color) }}>
+      {turn ? (
+        <p className="font-display text-4xl font-bold">{attempt.steal ? "Passou a vez! " : ""}Vez do time</p>
+      ) : (
+        <p className="font-display text-3xl opacity-80">{player ? playerLabel(player) : "Alguém"} apertou!</p>
+      )}
       <p className="font-display text-7xl font-bold">{teamLabel(team)}</p>
+      {turn && attempt.steal && <p className="font-display text-2xl">valendo metade dos pontos</p>}
+      {turn && clipPlaying && <Equalizer className="h-12 [&>span]:w-3" />}
       <p className="font-display text-3xl">{spoken ? "Respondendo…" : "digitando a resposta…"}</p>
-      {left !== null ? (
+      {turn && !attempt.deadline && (state.room.settings.answerSeconds ?? 20) > 0 ? (
+        <p className="font-display text-3xl opacity-80">o tempo começa quando o trecho tocar</p>
+      ) : left !== null ? (
         <p className={`font-display text-9xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</p>
       ) : (
         <p className="font-display text-3xl opacity-80">sem limite de tempo</p>
@@ -551,12 +579,12 @@ function TurnPanel({ state, attempt, now }: { state: RoomState; attempt: Attempt
 function DecisionFlash({ state, attempt, tiebreak }: { state: RoomState; attempt: Attempt; tiebreak?: boolean }) {
   const team = teamById(state, attempt.team_id);
   const ok = attempt.status === "correct";
-  const parts = attemptParts(attempt);
+  const parts = attemptParts(attempt, state.rounds.find((r) => r.id === attempt.round_id)?.mode);
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
       <div className={`npl-pop flex flex-col items-center gap-2 rounded-[3rem] px-16 py-10 shadow-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
         <p className="font-display text-9xl">{ok ? "✓" : "✗"}</p>
-        <p className="font-display text-6xl font-bold">{ok ? `Acertou ${parts || ""}!` : attempt.status === "timeout" ? "Tempo esgotado!" : "Errou!"}</p>
+        <p className="font-display text-6xl font-bold">{ok ? (parts ? `Acertou ${parts}!` : "Acertou!") : attempt.status === "timeout" ? "Tempo esgotado!" : "Errou!"}</p>
         {tiebreak && !ok && <p className="font-display text-4xl">Fora do desempate</p>}
         {team && <p className="font-display text-4xl">{teamLabel(team)} {attempt.points > 0 ? `+${attempt.points}` : attempt.points < 0 ? attempt.points : ""}</p>}
       </div>
@@ -621,6 +649,64 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
   const decided = attempts.filter((a) => ["correct", "wrong", "timeout"].includes(a.status));
   const tb = tiebreakOf(round);
   const auc = auctionOf(round);
+  const quiz = quizOf(round);
+  if (quiz) {
+    const winners = [...delta.entries()].filter(([, d]) => d > 0);
+    return (
+      <div className="flex w-full max-w-6xl flex-col items-center gap-5">
+        <QuizRevealTv state={state} round={round} />
+        {round.mode === "quiz_open" &&
+          (titleTeam ? (
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <TeamChip team={titleTeam} className="text-4xl px-6 py-2">🎉 {titleTeam.name} acertou</TeamChip>
+              {winners.map(([tid, d]) => (
+                <span key={tid} className="font-display text-4xl font-bold text-yellow-300">+{d}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="font-display text-4xl text-white/70">{round.skipped ? "Pergunta pulada" : "Ninguém acertou 😅"}</p>
+          ))}
+        {!quiz.hide_song && r && (
+          <div className="flex items-center gap-4 rounded-2xl bg-white/10 px-4 py-2">
+            {r.cover && (
+              // eslint-disable-next-line @next/next/no-img-element -- capa do Deezer
+              <img src={r.cover} alt="" className="h-16 w-16 rounded-xl" />
+            )}
+            <span className="font-display text-2xl">
+              🎵 {r.title} <span className="text-pink-300">— {artistCredits(r)}</span>
+            </span>
+          </div>
+        )}
+        {round.mode === "quiz_open" && attempts.length > 0 && (
+          <ul className="flex w-full max-w-4xl flex-col gap-2 text-lg">
+            {attempts.map((a) => (
+              <AttemptRow key={a.id} state={state} a={a} />
+            ))}
+          </ul>
+        )}
+        {round.mode === "quiz_open" && contest && decided.length > 0 && (
+          <div className="flex flex-col items-center gap-2">
+            <Button variant="secondary" onClick={() => setOpen((v) => !v)}>{open ? "Fechar" : "⚖️ Contestar"}</Button>
+            {open && (
+              <div className="flex flex-col gap-2 rounded-2xl bg-black/30 p-3">
+                {decided.map((a) => {
+                  const t = teamById(state, a.team_id);
+                  return (
+                    <div key={a.id} className="flex flex-wrap items-center gap-2">
+                      {t && <TeamChip team={t} />}
+                      <span className="text-white/70">“{a.answer_title || "—"}”</span>
+                      <OverrideButtons state={state} attempt={a} code={ctx.code} token={ctx.host} onError={setError} />
+                    </div>
+                  );
+                })}
+                {error && <p className="text-rose-300">{error}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-10">
       {r?.cover && (
@@ -696,9 +782,9 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
 
 function AttemptRow({ state, a }: { state: RoomState; a: Attempt }) {
   const team = teamById(state, a.team_id);
-  const parts = attemptParts(a);
+  const parts = attemptParts(a, state.rounds.find((r) => r.id === a.round_id)?.mode);
   const label =
-    a.status === "correct" ? `acertou ${parts}` : a.status === "timeout" ? "tempo esgotado" : a.status === "wrong" ? "errou" : a.status === "open" ? "respondendo" : "";
+    a.status === "correct" ? (parts ? `acertou ${parts}` : "acertou") : a.status === "timeout" ? "tempo esgotado" : a.status === "wrong" ? "errou" : a.status === "open" ? "respondendo" : "";
   const typed = [a.answer_artist, a.answer_title].filter(Boolean).join(" · ");
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl bg-white/10 px-3 py-2">

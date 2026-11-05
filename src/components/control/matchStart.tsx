@@ -4,7 +4,8 @@ import { Button } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import type { ModeId, PickedTrack, RoomState } from "@/lib/types";
-import { enabledModes, modeSchedule } from "@/modes/schedule";
+import { isQuizMode } from "@/modes/quiz/logic";
+import { TURN_MODES, enabledModes, modeSchedule, playingTeamCount } from "@/modes/schedule";
 
 /** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
 const TIEBREAK_RESERVE = 5;
@@ -41,6 +42,16 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   const modes = enabledModes(s);
   const extra = (s.tiebreak ?? "sudden") === "sudden" ? TIEBREAK_RESERVE : 0;
   let plan = modeSchedule(modes, s.modeOrder ?? "alternate", s.rounds);
+  // "Um time por vez": rodadas desses modos num múltiplo do número de times (todos jogam o mesmo tanto)
+  if ((s.turnFormat ?? "buzz") === "turns") {
+    const teams = playingTeamCount(state.teams, state.players);
+    const turnPlan = plan.filter((m) => TURN_MODES.includes(m)).length;
+    const fill = modes.filter((m) => TURN_MODES.includes(m) && m !== "lyrics" && m !== "continue");
+    const missing = turnPlan % teams ? teams - (turnPlan % teams) : 0;
+    const fillWith = fill.length ? fill : modes.filter((m) => TURN_MODES.includes(m));
+    if (turnPlan && fillWith.length) for (let i = 0; i < missing; i++) plan.push(fillWith[i % fillWith.length]);
+  }
+  const wantQ = plan.filter(isQuizMode).length;
   const wantL = plan.filter((m) => m === "lyrics").length;
   const wantC = plan.filter((m) => m === "continue").length;
   const contOnly = modes.length === 1 && modes[0] === "continue";
@@ -49,7 +60,9 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   // "Continuar a letra" descarta algumas músicas: pede candidatas a mais
   // (no teste, ~60% das músicas servem: pede 2× + 5 candidatas a mais)
   const spares = wantC ? Math.min(30, wantC * 2 + 5) : 0;
-  const { tracks: all, warnings: w } = await deezer.build(s.sources, s.rounds + extra + spares, s.versionFilter !== false, wantL);
+  // quizzes: algumas músicas a mais dão variedade às alternativas (e às curiosidades)
+  const quizSpares = wantQ ? Math.min(8, 3 + Math.ceil(wantQ / 4) * 2) : 0;
+  const { tracks: all, warnings: w } = await deezer.build(s.sources, plan.length + extra + spares + quizSpares, s.versionFilter !== false, wantL);
   const withL = all.filter((t) => t.lyrics);
   const lyricPool = withL.slice(0, wantL);
   const rest = [...all.filter((t) => !t.lyrics), ...withL.slice(wantL)];
@@ -136,8 +149,52 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
     } else t = op.shift() ?? lp.shift();
     if (t) ordered.push({ ...t, mode: m });
   });
+
+  // quizzes: uma pergunta por rodada (no servidor, com dados do Deezer e o banco de curiosidades)
+  const quizPos = ordered.map((t, i) => (isQuizMode(t.mode) ? i : -1)).filter((i) => i >= 0);
+  if (quizPos.length) {
+    onProgress({ label: "Preparando as perguntas do quiz…", done: 0, total: 0 });
+    const slim = (t: PickedTrack): PickedTrack => ({
+      deezer_id: t.deezer_id,
+      title: t.title,
+      title_short: t.title_short,
+      artist: t.artist,
+      artists: t.artists,
+      cover: t.cover,
+      album: t.album,
+      album_id: t.album_id,
+      artist_id: t.artist_id,
+    });
+    const res = await deezer
+      .quiz({
+        items: quizPos.map((i) => ({ ...slim(ordered[i]), format: ordered[i].mode === "quiz_choice" ? ("choice" as const) : ("open" as const) })),
+        pool: all.map(slim),
+        sources: s.sources,
+        curiosities: s.curiosities !== false,
+        recent: state.room.trivia_recent ?? [],
+      })
+      .catch(() => ({ results: [] as Awaited<ReturnType<typeof deezer.quiz>>["results"] }));
+    const inUse = new Set(ordered.map((t) => t.deezer_id));
+    const noQuiz = modes.find((m) => !isQuizMode(m) && m !== "lyrics" && m !== "continue") ?? "classic";
+    quizPos.forEach((pos, k) => {
+      const r = res.results[k];
+      // sem pergunta: a rodada vira outro modo ligado (o servidor também confere)
+      if (!r) {
+        ordered[pos] = { ...ordered[pos], mode: noQuiz };
+        return;
+      }
+      // curiosidade de um artista das fontes: toca uma música dele
+      const swap = r.track && !inUse.has(r.track.deezer_id) ? all.find((x) => x.deezer_id === r.track!.deezer_id) ?? r.track : null;
+      if (swap) inUse.add(swap.deezer_id);
+      ordered[pos] = { ...(swap ?? ordered[pos]), lyrics: undefined, cont: undefined, mode: ordered[pos].mode, quiz: r.quiz };
+    });
+  }
   // reservas (morte súbita, sempre clássico): o que sobrou, sem os dados dos modos
-  const leftovers = [...op, ...lp, ...cp].slice(0, extra).map((t) => ({ ...t, cont: undefined }));
+  const usedIds = new Set(ordered.map((t) => t.deezer_id));
+  const leftovers = [...op, ...lp, ...cp]
+    .filter((t) => !usedIds.has(t.deezer_id))
+    .slice(0, extra)
+    .map((t) => ({ ...t, cont: undefined, quiz: undefined }));
   const tracks = [...ordered, ...leftovers];
   // candidatas para o segundo plano: as que não entraram na partida
   const inMatch = new Set(tracks.map((t) => t.deezer_id));
@@ -147,7 +204,7 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
 
   onProgress(null);
   // o aviso de "poucas músicas" só interessa se faltou para as rodadas (não para as reservas)
-  const warnings = w.filter((x) => !x.startsWith("Só encontrei") || all.length < s.rounds);
+  const warnings = w.filter((x) => !x.startsWith("Só encontrei") || all.length < plan.length);
   return { tracks, rounds: ordered.length, warnings, short, only, background };
 }
 

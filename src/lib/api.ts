@@ -1,7 +1,7 @@
 "use client";
 // Wrappers das RPCs npl_* (únicas escritas permitidas no banco).
 import { supabase } from "./supabase";
-import type { ContinuePlan, PickedTrack, RoomSettings, RoomState, TrackMeta } from "./types";
+import type { ContinuePlan, MusicSource, PickedTrack, QuizPlan, RoomSettings, RoomState, TrackMeta } from "./types";
 
 type Listener = (kind: string, extra?: Record<string, unknown>) => void;
 let afterMutation: Listener | null = null;
@@ -152,7 +152,14 @@ export const api = {
     call<void>("npl_end_turn", { p_code: code, p_owner_token: owner, p_attempt_id: attemptId }),
   tick: (code: string) => call<boolean>("npl_tick", { p_code: code }),
   hostAnswer: (code: string, owner: string) =>
-    call<{ round_id: string; title: string; artist: string; artists: string[]; line?: string | null } | null>(
+    call<{
+      round_id: string;
+      title: string;
+      artist: string;
+      artists: string[];
+      line?: string | null;
+      quiz?: { q: string; answer: string; kind: string; hide_song?: boolean } | null;
+    } | null>(
       "npl_host_answer",
       { p_code: code, p_owner_token: owner },
       false,
@@ -173,8 +180,16 @@ export const api = {
       p_token: token,
       p_round_id: roundId,
     }),
+  /** Quiz de alternativas: o time escolhe uma (vale o primeiro toque de qualquer pessoa do time). */
+  quizChoose: (code: string, token: string, roundId: string, choice: number) =>
+    call<{ ok: boolean; reason?: string; choice?: number; ms?: number }>("npl_quiz_choose", {
+      p_code: code,
+      p_token: token,
+      p_round_id: roundId,
+      p_choice: choice,
+    }),
   submitAnswer: (code: string, token: string, attemptId: string, artist: string, title: string) =>
-    call<{ ok: boolean; reason?: string; result?: string; points?: number; artist?: string; title?: string }>("npl_submit_answer", {
+    call<{ ok: boolean; reason?: string; result?: string; points?: number; half?: boolean; artist?: string; title?: string }>("npl_submit_answer", {
       p_code: code,
       p_token: token,
       p_attempt_id: attemptId,
@@ -216,6 +231,20 @@ export const deezer = {
       `/api/game/continue/${id}?${new URLSearchParams({ code, owner })}`,
       { signal: AbortSignal.timeout(60000) },
     ),
+  /** Quizzes: uma pergunta por rodada de quiz (null = não deu; a rodada vira outro modo). */
+  quiz: (body: {
+    items: (PickedTrack & { format: "open" | "choice" })[];
+    pool: PickedTrack[];
+    sources: MusicSource[];
+    curiosities: boolean;
+    recent: string[];
+  }) =>
+    getJson<{ results: ({ quiz: QuizPlan; track?: PickedTrack } | null)[] }>("/api/game/quiz", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(65000),
+    }),
   /** Leilão: gênero + ano original (busca no Deezer, feita no servidor). */
   meta: (id: number | string) => getJson<TrackMeta>(`/api/deezer/meta/${id}`, { signal: AbortSignal.timeout(12000) }),
 };

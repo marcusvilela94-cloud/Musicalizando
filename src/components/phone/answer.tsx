@@ -7,6 +7,7 @@ import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { formatSeconds, lateTaps, missingParts, teamById } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
+import { isQuizMode, quizOf } from "@/modes/quiz/logic";
 import type { PhoneCtx } from "./PhoneApp";
 import { teamLabel } from "@/lib/icons";
 
@@ -58,13 +59,14 @@ function TurnHeader({ ctx, attempt, left, text, who }: { ctx: PhoneCtx; attempt:
   );
 }
 
-/** Resposta falada: sem campo de texto. */
-export function SpeakNow({ state, ctx, attempt, now }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt; now: number }) {
+/** Resposta falada: sem campo de texto. title: "Vez do seu time!" (um time por vez). */
+export function SpeakNow({ state, ctx, attempt, now, title }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt; now: number; title?: string }) {
   const left = useCountdown(ctx, attempt, state.room.paused, now);
   const team = ctx.team!;
   return (
     <div className="npl-pop flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: team.color, color: textOn(team.color) }}>
       <p className="font-display text-5xl">🗣️</p>
+      {title && <p className="font-display text-2xl">{title}</p>}
       <p className="font-display text-4xl font-bold">Falem a resposta em voz alta!</p>
       {left !== null ? (
         <p className={`font-display text-8xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</p>
@@ -130,7 +132,7 @@ export function AnswerForm({
       <FoundLine state={state} round={round} />
       {almost && (
         <p className="npl-pop rounded-2xl bg-amber-400 px-4 py-3 font-display text-xl text-violet-950">
-          {round.mode === "continue" ? "Quase! Confira a linha e envie de novo." : <>Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.</>}
+          {round.mode === "continue" ? "Quase! Confira a linha e envie de novo." : isQuizMode(round.mode) ? "Quase! Confira a escrita e envie de novo." : <>Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.</>}
         </p>
       )}
       {need.artist && (
@@ -148,7 +150,8 @@ export function AnswerForm({
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder={round.mode === "continue" ? "Continue a letra…" : "Música"}
+          placeholder={round.mode === "continue" ? "Continue a letra…" : quizOf(round)?.year ? "Ano (ex.: 1994)" : isQuizMode(round.mode) ? "Sua resposta" : "Música"}
+          inputMode={quizOf(round)?.year ? "numeric" : undefined}
           autoComplete="off"
           autoFocus={!need.artist}
           className={field(almost?.title === "doubt")}
@@ -163,13 +166,29 @@ export function AnswerForm({
   );
 }
 
-export function OtherAnswering({ state, ctx, attempt, now, spoken }: { state: RoomState; ctx: PhoneCtx; attempt: Attempt; now: number; spoken: boolean }) {
+export function OtherAnswering({
+  state,
+  ctx,
+  attempt,
+  now,
+  spoken,
+  turn,
+}: {
+  state: RoomState;
+  ctx: PhoneCtx;
+  attempt: Attempt;
+  now: number;
+  spoken: boolean;
+  /** um time por vez: "Vez do time X" */
+  turn?: boolean;
+}) {
   const t = teamById(state, attempt.team_id);
   const left = useCountdown(ctx, attempt, state.room.paused, now);
   const mine = lateTaps(state, attempt).find((l) => l.team?.id === ctx.team?.id);
   if (!t) return null;
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: t.color, color: textOn(t.color) }}>
+      {turn && <p className="font-display text-2xl">Vez do time</p>}
       <p className="font-display text-4xl font-bold">{teamLabel(t)}</p>
       <p className="font-display text-2xl">{spoken ? "está respondendo…" : "está digitando…"}</p>
       {left !== null && <p className="font-display text-6xl font-bold tabular-nums">{Math.ceil(left / 1000)}</p>}

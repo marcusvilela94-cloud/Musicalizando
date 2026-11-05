@@ -348,6 +348,8 @@ function toPicked(t: DzTrack): PickedTrack {
     artists: [t.artist?.name ?? "?"],
     cover: t.album?.cover_big ?? t.album?.cover_medium ?? null,
     album: t.album?.title ?? null,
+    album_id: t.album?.id ?? null,
+    artist_id: t.artist?.id ?? null,
   };
 }
 
@@ -454,3 +456,7 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
   }
   return { tracks: shuffle(picked), warnings, withLyrics: picked.filter((t) => t.lyrics).length };
 }
+
+// Usados pelo gerador de perguntas do quiz (src/lib/quiz.ts)
+export { dz as dzGet, getAlbum, isCompilationAlbum, genreOf, norm as normTitle, fold, shuffle, VERSION_RE, albumVersionText };
+export type { DzTrack, DzAlbum, DzList, DzArtist };

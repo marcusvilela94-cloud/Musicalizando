@@ -1,7 +1,20 @@
 import type { ModeId, RoomSettings } from "@/lib/types";
 
 /** Ordem da lista na configuração (e dos blocos). Modo novo: acrescentar aqui. */
-export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics", "continue"];
+export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics", "continue", "quiz_open", "quiz_choice"];
+
+/** Modos em que vale o "Formato da vez" (Um time por vez). */
+export const TURN_MODES: ModeId[] = ["classic", "lyrics", "continue", "quiz_open"];
+
+/** Times que vão jogar (os vazios saem; quem está sem time entra nos vazios primeiro). */
+export function playingTeamCount(teams: { id: string }[], players: { team_id: string | null }[]) {
+  const withPlayers = teams.filter((t) => players.some((p) => p.team_id === t.id)).length;
+  const loose = players.filter((p) => !p.team_id).length;
+  return Math.max(2, withPlayers + Math.min(teams.length - withPlayers, loose));
+}
+
+/** "Um time por vez": músicas arredondadas para cima, para todos terem o mesmo número de rodadas. */
+export const turnRounds = (rounds: number, teams: number) => Math.ceil(rounds / Math.max(1, teams)) * Math.max(1, teams);
 
 export type ModeOrder = "alternate" | "random" | "blocks";
 

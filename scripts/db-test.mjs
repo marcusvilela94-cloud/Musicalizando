@@ -1061,6 +1061,180 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok cache de sincronização");
 }
 
+// ---------- quizzes (aberto e alternativas) ----------
+{
+  const mkRoom = async (settings, n) => {
+    const { code: c } = await rpc("npl_create_room", OWNER, { teamCount: n, ...settings });
+    let s = await rpc("npl_get_state", c);
+    for (let i = 0; i < n; i++) {
+      await rpc("npl_join", c, P(90 + i), `Q${i}`);
+      await rpc("npl_set_team", c, P(90 + i), s.teams[i].id);
+    }
+    s = await rpc("npl_get_state", c);
+    return { c, teams: s.teams.map((t) => t.id) };
+  };
+  const quizTrack = (i, quiz, mode) => ({ deezer_id: 9900 + i, title: `Q${i}`, title_short: `Q${i}`, artist: "Banda", artists: ["Banda"], cover: "x", album: "Disco", mode, quiz });
+  const cur = async (c) => {
+    const s = await rpc("npl_get_state", c);
+    return { s, r: s.rounds.find((x) => x.round_no === s.room.round_no) };
+  };
+
+  // alternativas: todos respondem ao mesmo tempo, pontos pelo tempo
+  const { c: qc, teams: qt } = await mkRoom({ modePool: ["quiz_choice"], mode: "quiz_choice" }, 3);
+  const choice = { kind: "album", q: "De qual álbum é esta música?", answer: "Disco", options: ["Outro", "Disco", "Mais um", "Último"], correct: 1, open: true, trivia_id: "c80-01" };
+  await rpc("npl_start_match", qc, OWNER, [quizTrack(1, choice, "quiz_choice"), quizTrack(2, choice, "quiz_choice")], 2);
+  let { s: qs, r: qr } = await cur(qc);
+  assert.equal(qr.mode, "quiz_choice");
+  assert.deepEqual(qs.room.trivia_recent, ["c80-01"], "curiosidade usada fica nas recentes");
+  await rpc("npl_round_begin", qc, OWNER, qr.id, [], [], {});
+  ({ r: qr } = await cur(qc));
+  assert.equal(qr.quiz.options.length, 4);
+  assert.equal(qr.quiz.correct, undefined, "a certa não aparece antes");
+  assert.equal(qr.quiz.answer, undefined);
+  assert.equal(qr.play_seq, 1, "a prévia toca sozinha");
+  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).reason, "early", "3 s para ler a pergunta");
+  assert.equal((await rpc("npl_buzz", qc, P(90), qr.id)).reason, "choice");
+  await db.query("update npl_rounds set quiz = quiz || jsonb_build_object('starts_at', now() - interval '0.1 seconds', 'deadline', now() + interval '15 seconds') where id = $1", [qr.id]);
+  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).ok, true);
+  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 2)).reason, "already", "vale o primeiro toque do time");
+  assert.equal((await rpc("npl_quiz_choose", qc, P(91), qr.id, 7)).reason, "bad_choice");
+  assert.equal((await rpc("npl_quiz_choose", qc, P(91), qr.id, 0)).ok, true);
+  ({ s: qs, r: qr } = await cur(qc));
+  assert.equal(qr.status, "playing");
+  assert.equal(qr.quiz.answered.length, 2);
+  assert.equal(qs.attempts.length, 0, "escolhas ficam ocultas até fechar");
+  await db.exec("set role anon");
+  await fails(db.query("select * from public.npl_quiz_answers"), "permission denied");
+  await db.exec("reset role");
+  await rpc("npl_quiz_choose", qc, P(92), qr.id, 1);
+  ({ s: qs, r: qr } = await cur(qc));
+  assert.equal(qr.status, "revealed", "todos responderam: revela");
+  assert.equal(qr.quiz.correct, 1);
+  assert.equal(qr.quiz.answer, "Disco");
+  assert.deepEqual(qr.quiz.counts, [1, 2, 0, 0]);
+  const pts = (t) => qs.teams.find((x) => x.id === t).score;
+  assert.ok(pts(qt[0]) >= 50 && pts(qt[0]) <= 100, `acerto vale de 50 a 100 (${pts(qt[0])})`);
+  assert.ok(pts(qt[0]) >= 95, "respondeu logo: perto de 100");
+  assert.equal(pts(qt[1]), 0);
+  assert.ok(pts(qt[2]) <= pts(qt[0]), "quem respondeu depois ganha menos");
+  assert.equal(qr.winner_team_id, qt[0], "o mais rápido aparece como vencedor");
+  // prazo acabou: fecha com quem respondeu; "Encerrar respostas" também
+  await rpc("npl_next_round", qc, OWNER, 1);
+  ({ r: qr } = await cur(qc));
+  await rpc("npl_round_begin", qc, OWNER, qr.id, [], [], {});
+  await db.query("update npl_rounds set quiz = quiz || jsonb_build_object('starts_at', now() - interval '20 seconds', 'deadline', now() - interval '5 seconds') where id = $1", [qr.id]);
+  assert.equal(await rpc("npl_tick", qc), true);
+  ({ s: qs, r: qr } = await cur(qc));
+  assert.equal(qr.status, "revealed");
+  assert.deepEqual(qr.quiz.counts, [0, 0, 0, 0]);
+  console.log("ok quiz de alternativas");
+
+  // aberto: EU SEI!, ano exato 100, errou por 1 = 50 (encerra), bloqueio corre na hora
+  const year = { kind: "year", q: "Em que ano saiu esta música?", answer: "1994", year: 1994, options: ["1994", "1991", "1996", "1990"], correct: 0, open: true };
+  const albumQ = { kind: "album", q: "De qual álbum é esta música?", answer: "Disco Bom", accept: ["Disco Bom"], open: true };
+  const { c: oc, teams: ot } = await mkRoom({ modePool: ["quiz_open"], mode: "quiz_open", penalty: 20 }, 2);
+  await rpc("npl_start_match", oc, OWNER, [quizTrack(1, albumQ, "quiz_open"), quizTrack(2, year, "quiz_open"), quizTrack(3, { ...year, open: false }, "quiz_open")], 3);
+  let { r: or } = await cur(oc);
+  await rpc("npl_round_begin", oc, OWNER, or.id, [], [], {});
+  ({ r: or } = await cur(oc));
+  assert.equal(or.mode, "quiz_open");
+  assert.equal(or.quiz.q, "De qual álbum é esta música?");
+  assert.equal(or.quiz.options, undefined, "aberto não mostra alternativas");
+  let ob = await rpc("npl_buzz", oc, P(90), or.id);
+  let oa = await rpc("npl_submit_answer", oc, P(90), ob.attempt_id, "", "Outra coisa nada a ver");
+  assert.equal(oa.result, "wrong");
+  ({ r: or } = await cur(oc));
+  assert.ok(or.locks[ot[0]].until, "no quiz a contagem do bloqueio começa na hora");
+  ob = await rpc("npl_buzz", oc, P(91), or.id);
+  oa = await rpc("npl_submit_answer", oc, P(91), ob.attempt_id, "", "disco bom (deluxe)");
+  assert.equal(oa.result, "correct");
+  assert.equal(oa.points, 100);
+  ({ r: or } = await cur(oc));
+  assert.equal(or.quiz.answer, "Disco Bom");
+  await rpc("npl_next_round", oc, OWNER, 1);
+  ({ r: or } = await cur(oc));
+  await rpc("npl_round_begin", oc, OWNER, or.id, [], [], {});
+  ob = await rpc("npl_buzz", oc, P(90), or.id);
+  oa = await rpc("npl_submit_answer", oc, P(90), ob.attempt_id, "", "foi em 95");
+  assert.equal(oa.result, "correct", "errar por 1 ano encerra a rodada");
+  assert.equal(oa.half, true);
+  assert.equal(oa.points, 50);
+  await rpc("npl_next_round", oc, OWNER, 2);
+  ({ r: or } = await cur(oc));
+  assert.equal(or.mode, "classic", "pergunta que não serve para o aberto cai em outro modo");
+  console.log("ok quiz aberto");
+}
+
+// ---------- "Um time por vez" ----------
+{
+  const { code: tc } = await rpc("npl_create_room", OWNER, { teamCount: 3, turnFormat: "turns", answerSeconds: 20, scoring: "title" });
+  let ts = await rpc("npl_get_state", tc);
+  for (let i = 0; i < 3; i++) {
+    await rpc("npl_join", tc, P(95 + i), `T${i}`);
+    await rpc("npl_set_team", tc, P(95 + i), ts.teams[i].id);
+  }
+  ts = await rpc("npl_get_state", tc);
+  const tt = ts.teams.map((t) => t.id);
+  const tracks = [1, 2, 3, 4].map((i) => ({ deezer_id: 9950 + i, title: `Faixa Vez ${i}`, title_short: `Faixa Vez ${i}`, artist: "Vez", artists: ["Vez"], cover: "x" }));
+  await rpc("npl_start_match", tc, OWNER, tracks, 3);
+  const cur = async () => {
+    const s = await rpc("npl_get_state", tc);
+    const r = s.rounds.find((x) => x.round_no === s.room.round_no);
+    return { s, r, a: s.attempts.find((x) => x.id === r.current_attempt_id) };
+  };
+  let { r: tr } = await cur();
+  await rpc("npl_round_begin", tc, OWNER, tr.id, [], [0, 0, 0, 0, 0, 0]);
+  let { r, a } = await cur();
+  assert.equal(r.status, "answering", "a rodada já abre com a vez do time");
+  assert.equal(r.turn.team, tt[0]);
+  assert.equal(a.team_id, tt[0]);
+  assert.equal(a.deadline, null, "o prazo só começa quando o trecho toca");
+  assert.equal((await rpc("npl_buzz", tc, P(96), r.id)).reason, "turns");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, false)).ok, true, "Tocar com a vez aberta");
+  ({ r, a } = await cur());
+  assert.ok(a.deadline, "prazo começou");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, true)).ok, true, "Próximo trecho durante a vez");
+  ({ r, a } = await cur());
+  assert.equal(a.stage_points, 80, "vale o trecho atual");
+  assert.equal((await rpc("npl_submit_answer", tc, P(96), a.id, "", "x")).reason, "not_your_team");
+  await rpc("npl_submit_answer", tc, P(95), a.id, "", "nada a ver mesmo");
+  ({ r, a } = await cur());
+  assert.equal(r.status, "answering", "errou: passa a vez");
+  assert.equal(a.team_id, tt[1]);
+  assert.equal(a.stage_points, 40, "valendo metade");
+  assert.ok(a.deadline, "a música continua: o prazo já corre");
+  const ok2 = await rpc("npl_submit_answer", tc, P(96), a.id, "", "Faixa Vez 1");
+  assert.equal(ok2.result, "correct");
+  assert.equal(ok2.points, 40);
+  await rpc("npl_next_round", tc, OWNER, 1);
+  ({ r } = await cur());
+  await rpc("npl_round_begin", tc, OWNER, r.id, [], []);
+  ({ r, a } = await cur());
+  assert.equal(r.turn.team, tt[1], "rodízio: a 2ª rodada é do 2º time");
+  // tempo esgotado também passa; todos erraram: revela
+  await rpc("npl_play", tc, OWNER, r.id, 1, false);
+  for (let i = 0; i < 3; i++) {
+    ({ r, a } = await cur());
+    await db.query("update npl_attempts set deadline = now() - interval '5 seconds' where id = $1", [a.id]);
+    assert.equal(await rpc("npl_tick", tc), true);
+  }
+  ({ r } = await cur());
+  assert.equal(r.status, "revealed", "todos tentaram: revela");
+  assert.equal(r.turn.tried.length, 3);
+  // passa a vez desligada: errou, revela
+  await rpc("npl_next_round", tc, OWNER, 2);
+  await rpc("npl_finish_match", tc, OWNER);
+  await rpc("npl_update_settings", tc, OWNER, { passOnWrong: false });
+  await rpc("npl_start_match", tc, OWNER, tracks, 3);
+  ({ r } = await cur());
+  await rpc("npl_round_begin", tc, OWNER, r.id, [], []);
+  ({ r, a } = await cur());
+  await rpc("npl_submit_answer", tc, P(95), a.id, "", "errado");
+  ({ r } = await cur());
+  assert.equal(r.status, "revealed", "sem passar a vez: errou, revela");
+  console.log("ok um time por vez");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

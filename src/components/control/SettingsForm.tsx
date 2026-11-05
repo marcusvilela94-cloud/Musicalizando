@@ -5,7 +5,7 @@ import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import type { ArtistLevel, ModeId, MusicSource, RoomSettings, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
-import { MODE_LIST, enabledModes, type ModeOrder } from "@/modes/schedule";
+import { MODE_LIST, TURN_MODES, enabledModes, playingTeamCount, turnRounds, type ModeOrder } from "@/modes/schedule";
 
 const PRESET_SOURCES: MusicSource[] = [{ type: "preset", id: "top_brasil", label: "Top Brasil" }];
 const sameSource = (a: MusicSource, b: MusicSource) => a.type === b.type && a.id === b.id;
@@ -33,6 +33,10 @@ const MODE_HINTS: Record<ModeId, string> = {
     "Sem som: a TV mostra trechos da letra (título e artista viram ___), um verso por vez. Quanto menos versos, mais pontos: 100, 75, 50, 30 e 15 no refrão. A prévia toca na revelação.",
   continue:
     "A TV mostra música e artista e toca um trecho que para logo antes de uma linha: cante/digite a próxima linha (vale 100). Na revelação, a música segue até o fim para todo mundo cantar junto.",
+  quiz_open:
+    "A prévia toca ao fundo e a TV mostra uma pergunta (ano, álbum, quem canta, capa, complete o título, curiosidade…). Quem souber aperta EU SEI! e responde. Vale 100 (no ano digitado, errar por 1 vale 50).",
+  quiz_choice:
+    "Estilo Kahoot: pergunta e 4 alternativas na TV; todos os times respondem ao mesmo tempo pelo celular em 15s. Acerto vale de 100 (na hora) a 50 (no último segundo).",
 };
 
 const ORDER_HINTS: Record<ModeOrder, string> = {
@@ -44,9 +48,12 @@ const ORDER_HINTS: Record<ModeOrder, string> = {
 /** Em quais modos cada opção vale (para esconder ou etiquetar). */
 const APPLIES = {
   scoring: ["classic", "lyrics"] as ModeId[], // O que vale
-  penalty: ["classic", "lyrics"] as ModeId[], // Penalidade
-  lock: ["classic", "lyrics", "continue"] as ModeId[], // Bloqueio após erro
+  penalty: ["classic", "lyrics", "quiz_open"] as ModeId[], // Penalidade
+  lock: ["classic", "lyrics", "continue", "quiz_open"] as ModeId[], // Bloqueio após erro
   clips: ["classic"] as ModeId[], // Trechos
+  turns: TURN_MODES, // Formato da vez
+  answer: ["classic", "auction", "lyrics", "continue", "quiz_open"] as ModeId[], // Tempo de resposta (alternativas: 15s fixos)
+  curiosities: ["quiz_open", "quiz_choice"] as ModeId[], // Perguntas de curiosidade
 };
 
 /**
@@ -96,8 +103,27 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     const yes = on.filter((m) => modes.includes(m));
     return yes.length && yes.length < on.length ? `só no ${yes.map((m) => getMode(m).label).join(" e no ")}` : undefined;
   };
-  const show = { scoring: applies(APPLIES.scoring), penalty: applies(APPLIES.penalty), lock: applies(APPLIES.lock) };
-  const tag = { scoring: tagFor(APPLIES.scoring), penalty: tagFor(APPLIES.penalty), lock: tagFor(APPLIES.lock) };
+  const turns = (settings.turnFormat ?? "buzz") === "turns" && applies(APPLIES.turns);
+  const show = {
+    scoring: applies(APPLIES.scoring),
+    penalty: applies(APPLIES.penalty),
+    // um time por vez: só o time da vez responde, não há bloqueio
+    lock: applies(APPLIES.lock) && !(turns && on.every((m) => !APPLIES.lock.includes(m) || APPLIES.turns.includes(m))),
+    turns: applies(APPLIES.turns),
+    answer: applies(APPLIES.answer),
+    curiosities: applies(APPLIES.curiosities),
+  };
+  const tag = {
+    scoring: tagFor(APPLIES.scoring),
+    penalty: tagFor(APPLIES.penalty),
+    lock: tagFor(APPLIES.lock),
+    turns: tagFor(APPLIES.turns),
+    answer: tagFor(APPLIES.answer),
+    curiosities: tagFor(APPLIES.curiosities),
+  };
+  // um time por vez: músicas arredondadas para o próximo múltiplo do número de times
+  const teamsNow = settings.teamMode === "solo" ? playingTeamCount(state.teams, state.players) : settings.teamCount;
+  const roundsAdj = turns ? turnRounds(settings.rounds, teamsNow) : settings.rounds;
   const showClips = applies(APPLIES.clips);
   const clipsTag = tagFor(APPLIES.clips);
 
@@ -199,6 +225,11 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             onKeyUp={(e) => update({ rounds: Number((e.target as HTMLInputElement).value) })}
             className="accent-yellow-300"
           />
+          {roundsAdj !== settings.rounds && (
+            <p className="rounded-xl bg-yellow-300/15 px-3 py-2 text-sm text-yellow-100">
+              Um time por vez: {settings.rounds} → {roundsAdj} músicas para {teamsNow} {settings.teamMode === "solo" ? "jogadores" : "times"} (todos jogam o mesmo número de rodadas).
+            </p>
+          )}
         </Card>
         {show.scoring && (
           <Option title="O que vale" tag={tag.scoring} value={settings.scoring} onChange={(v) => update({ scoring: v })}
@@ -217,8 +248,31 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             ? "Todos os trechos começam do início da prévia e vão crescendo: 1s, 2s, 4s, 8s, 15s, 30s."
             : "Cada trecho começa num ponto sorteado diferente da prévia; o último toca a prévia inteira."} />
         )}
-        <Option title="Tempo de resposta do time" value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
-          options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
+        {show.turns && (
+          <Option title="Formato da vez" tag={tag.turns} value={settings.turnFormat ?? "buzz"} onChange={(v) => update({ turnFormat: v })}
+            options={[["buzz", "Quem sabe primeiro"], ["turns", "Um time por vez"]]}
+            hint={(settings.turnFormat ?? "buzz") === "buzz"
+              ? "Quem apertar EU SEI! primeiro responde."
+              : "Cada rodada é de um time, em rodízio. Só ele responde (sem EU SEI!); o tempo de resposta começa quando o trecho/pista aparece."} />
+        )}
+        {show.turns && (settings.turnFormat ?? "buzz") === "turns" && (
+          <Option title="Passa a vez se errar" tag={tag.turns} value={settings.passOnWrong !== false} onChange={(v) => update({ passOnWrong: v })}
+            options={[[true, "Ligada"], [false, "Desligada"]]}
+            hint={settings.passOnWrong !== false
+              ? "Errou ou o tempo acabou: a vez passa para o próximo time, valendo metade, até todos tentarem. A música continua de onde parou."
+              : "Errou ou o tempo acabou: a rodada termina e revela."} />
+        )}
+        {show.curiosities && (
+          <Option title="Perguntas de curiosidade" tag={tag.curiosities} value={settings.curiosities !== false} onChange={(v) => update({ curiosities: v })}
+            options={[[true, "Ligadas"], [false, "Desligadas"]]}
+            hint={settings.curiosities !== false
+              ? "Cerca de 1 a cada 4 perguntas é uma curiosidade sobre artistas e bandas (de preferência os das suas fontes)."
+              : "Só perguntas sobre as músicas sorteadas."} />
+        )}
+        {show.answer && (
+          <Option title="Tempo de resposta do time" tag={tag.answer} value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
+            options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
+        )}
         {show.lock && (
           <Option title="Bloqueio após erro" tag={tag.lock} value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
             options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}

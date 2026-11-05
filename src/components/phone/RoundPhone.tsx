@@ -18,9 +18,12 @@ import {
   tiebreakDecider,
   tiebreakLeft,
   tiebreakOf,
+  turnOf,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
+import { quizOf } from "@/modes/quiz/logic";
+import { QuizAnswerLine, QuizPhoneQuestion } from "@/modes/quiz/QuizViews";
 import { AnswerForm, FoundLine, OtherAnswering, SpeakNow, vibrate } from "./answer";
 import type { PhoneCtx } from "./PhoneApp";
 
@@ -32,6 +35,8 @@ const REASONS: Record<string, string> = {
   own_turn: "Seu time já está respondendo!",
   no_team: "Escolha um time primeiro.",
   tiebreak: "Só os times empatados jogam o desempate.",
+  turns: "Não é a vez do seu time.",
+  choice: "Responda pelos botões das alternativas.",
 };
 
 export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round | null }) {
@@ -89,9 +94,14 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
     if (notYet) body = <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>;
     else body = <BuzzButton state={state} ctx={ctx} round={round} now={now} onFeedback={setFeedback} />;
   } else if (round.status === "answering" && attempt) {
-    if (attempt.team_id !== team.id) body = <OtherAnswering state={state} ctx={ctx} attempt={attempt} now={now} spoken={spoken} />;
-    else if (spoken) body = <SpeakNow state={state} ctx={ctx} attempt={attempt} now={now} />;
-    else body = <AnswerForm key={attempt.id} state={state} ctx={ctx} round={round} attempt={attempt} now={now} />;
+    // um time por vez: sem EU SEI!, o time da vez responde direto
+    const turn = turnOf(round);
+    const who = turn ? (attempt.steal ? "Passou para vocês! (metade dos pontos)" : "Vez do seu time!") : undefined;
+    const quizHint = quizOf(round) ? <QuizPhoneQuestion round={round} now={now} /> : undefined;
+    if (attempt.team_id !== team.id) body = <OtherAnswering state={state} ctx={ctx} attempt={attempt} now={now} spoken={spoken} turn={!!turn} />;
+    else if (notYet) body = <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>;
+    else if (spoken) body = <SpeakNow state={state} ctx={ctx} attempt={attempt} now={now} title={who} />;
+    else body = <AnswerForm key={attempt.id} state={state} ctx={ctx} round={round} attempt={attempt} now={now} who={who} hint={quizHint} />;
   } else if (round.status === "doubt" && attempt) {
     const t = teamById(state, attempt.team_id);
     body = (
@@ -112,17 +122,20 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
   return (
     <>
       {body}
-      {myDecision && round.status === "playing" && <DecisionToast attempt={myDecision} tiebreak={!!tb} />}
+      {myDecision && (round.status === "playing" || round.status === "answering") && (
+        <DecisionToast attempt={myDecision} mode={round.mode} tiebreak={!!tb} />
+      )}
       {feedback && <p className="npl-pop absolute bottom-6 left-4 right-4 rounded-2xl bg-black/80 px-4 py-3 text-lg">{feedback}</p>}
     </>
   );
 }
 
-function DecisionToast({ attempt, tiebreak }: { attempt: Attempt; tiebreak?: boolean }) {
+function DecisionToast({ attempt, mode, tiebreak }: { attempt: Attempt; mode: string; tiebreak?: boolean }) {
   const ok = attempt.status === "correct";
+  const parts = attemptParts(attempt, mode);
   return (
-    <div className={`npl-pop absolute left-4 right-4 top-4 rounded-2xl px-4 py-3 font-display text-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
-      {ok ? `✓ Acertaram ${attemptParts(attempt)}!` : attempt.status === "timeout" ? "⏱ Tempo esgotado" : "✗ Errou!"}
+    <div className={`npl-pop absolute left-4 right-4 top-4 z-10 rounded-2xl px-4 py-3 font-display text-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
+      {ok ? (parts ? `✓ Acertaram ${parts}!` : "✓ Acertaram!") : attempt.status === "timeout" ? "⏱ Tempo esgotado" : "✗ Errou!"}
       {tiebreak && !ok ? " Fora do desempate." : ""}{" "}
       {attempt.points ? (attempt.points > 0 ? `+${attempt.points}` : attempt.points) : ""}
     </div>
@@ -161,6 +174,7 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
+      <QuizPhoneQuestion round={round} now={now} />
       <FoundLine state={state} round={round} />
       <button
         onPointerDown={(e) => {
@@ -199,23 +213,30 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
 function RevealPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round }) {
   const team = ctx.team!;
   const myAttempts = state.attempts.filter((a) => a.round_id === round.id && a.team_id === team.id && a.kind === "turn");
-  const won = round.artist_team_id === team.id || round.title_team_id === team.id;
+  // alternativas: todos os times que acertaram ganham
+  const won =
+    round.artist_team_id === team.id || round.title_team_id === team.id || myAttempts.some((a) => a.status === "correct");
   const erred = myAttempts.some((a) => a.status === "wrong" || a.status === "timeout");
   const winner = teamById(state, round.title_team_id ?? round.artist_team_id);
   const delta = roundDelta(state, round).get(team.id) ?? 0;
+  const quiz = quizOf(round);
+  const noAnswer = round.mode === "quiz_choice" && !myAttempts.length && !round.skipped;
   return (
     <>
       {won ? (
         <p className="npl-pop font-display text-6xl font-bold text-emerald-300">🎉 Acertou!</p>
       ) : erred ? (
         <p className="npl-pop font-display text-6xl font-bold text-rose-300">❌ Errou</p>
+      ) : noAnswer ? (
+        <p className="font-display text-3xl">⏱ Seu time não respondeu</p>
       ) : winner ? (
         <p className="font-display text-3xl"><TeamChip team={winner} /> acertou</p>
       ) : (
         <p className="font-display text-3xl">{round.skipped ? "Música pulada" : "Ninguém acertou 😅"}</p>
       )}
       {delta !== 0 && <p className="font-display text-5xl font-bold">{delta > 0 ? `+${delta}` : delta} pts</p>}
-      {round.reveal && (
+      <QuizAnswerLine round={round} />
+      {round.reveal && !quiz?.hide_song && (
         <div className="flex items-center gap-3 rounded-2xl bg-white/10 p-3 text-left">
           {round.reveal.cover && (
             // eslint-disable-next-line @next/next/no-img-element -- capa do Deezer

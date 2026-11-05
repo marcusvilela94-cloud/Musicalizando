@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import type { PlayHandle } from "@/lib/audio";
+import { turnOpen } from "@/lib/game";
 import type { TvEngineProps } from "../types";
 import { contClip, contOf } from "./logic";
 
@@ -21,7 +22,7 @@ export function ContinueTvEngine({ round, paused, buffer, audio, serverNow, onPl
   }, [onPlayingChange]);
 
   const c = contOf(round);
-  const open = round.status === "playing" && !paused;
+  const open = (round.status === "playing" || turnOpen(round)) && !paused;
 
   useEffect(() => {
     if (open) return;
