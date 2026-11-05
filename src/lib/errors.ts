@@ -19,6 +19,9 @@ const MESSAGES: Record<string, string> = {
   bad_claim: "Este QR de apresentador já foi usado ou expirou. Escaneie o QR que está na TV agora.",
   round_not_found: "Rodada não encontrada.",
   attempt_not_found: "Tentativa não encontrada.",
+  bad_icon: "Esse ícone não está na lista.",
+  bad_color: "Essa cor não está na paleta.",
+  color_taken: "Outro time já está usando essa cor.",
 };
 
 /** Converte erros "npl:codigo" das RPCs em mensagens legíveis. */

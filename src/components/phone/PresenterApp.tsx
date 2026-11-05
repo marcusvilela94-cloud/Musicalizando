@@ -4,6 +4,7 @@ import { FinalControls } from "@/components/control/FinalControls";
 import { GameControls, OverrideButtons, useGameActions } from "@/components/control/GameControls";
 import { SettingsForm } from "@/components/control/SettingsForm";
 import { TeamsBoard } from "@/components/control/TeamsBoard";
+import { RoomTheme } from "@/components/EmojiRain";
 import { Button, Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
 import { type Peers, useRoom } from "@/hooks/useRoom";
@@ -43,6 +44,7 @@ export function PresenterApp({ code, token }: { code: string; token: string }) {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
+      <RoomTheme theme={state.room.settings.theme} />
       <header className="flex items-center gap-2 bg-black/30 px-4 py-2">
         <span className="font-display text-lg font-semibold">🎤 Apresentador</span>
         <span className="font-display text-white/70">· Sala {code}</span>

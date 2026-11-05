@@ -50,6 +50,9 @@ export const api = {
   /** Ícone do time (quem está no time, o dono ou o apresentador). */
   setTeamIcon: (code: string, token: string, teamId: string, icon: string) =>
     call<void>("npl_set_team_icon", { p_code: code, p_token: token, p_team_id: teamId, p_icon: icon }),
+  /** Cor do time (da paleta; não pode repetir a de outro time). */
+  setTeamColor: (code: string, token: string, teamId: string, color: string) =>
+    call<void>("npl_set_team_color", { p_code: code, p_token: token, p_team_id: teamId, p_color: color }),
   rematchVote: (code: string, token: string, value: boolean) =>
     call<void>("npl_rematch_vote", { p_code: code, p_token: token, p_value: value }),
 

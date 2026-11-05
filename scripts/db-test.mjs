@@ -913,6 +913,31 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok vários modos");
 }
 
+// ---------- tema e cor do time ----------
+{
+  const { code: c9 } = await rpc("npl_create_room", OWNER, { theme: "neon" });
+  let s9 = await rpc("npl_get_state", c9);
+  assert.equal(s9.room.settings.theme, "neon");
+  await rpc("npl_update_settings", c9, OWNER, { theme: "disco" });
+  assert.equal((await rpc("npl_get_state", c9)).room.settings.theme, "party", "tema inválido -> padrão");
+  await rpc("npl_join", c9, P(60), "Ana");
+  s9 = await rpc("npl_get_state", c9);
+  const [t1, t2] = s9.teams;
+  await rpc("npl_set_team", c9, P(60), t1.id);
+  assert.match(t1.name, /^Time /);
+  await rpc("npl_set_team_color", c9, P(60), t1.id, "#A855F7"); // Roxo
+  s9 = await rpc("npl_get_state", c9);
+  assert.equal(s9.teams.find((t) => t.id === t1.id).color, "#A855F7");
+  assert.equal(s9.teams.find((t) => t.id === t1.id).name, "Time Roxo", "nome padrão acompanha a cor");
+  await fails(rpc("npl_set_team_color", c9, P(60), t1.id, t2.color), "color_taken");
+  await fails(rpc("npl_set_team_color", c9, P(60), t1.id, "#123456"), "bad_color");
+  await fails(rpc("npl_set_team_color", c9, P(60), t2.id, "#F97316"), "not_allowed");
+  await rpc("npl_rename_team", c9, P(60), t1.id, "Os Brabos");
+  await rpc("npl_set_team_color", c9, OWNER, t1.id, "#F97316");
+  assert.equal((await rpc("npl_get_state", c9)).teams.find((t) => t.id === t1.id).name, "Os Brabos", "nome próprio fica");
+  console.log("ok tema e cores");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

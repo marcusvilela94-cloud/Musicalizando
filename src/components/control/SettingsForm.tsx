@@ -234,6 +234,9 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
           hint={settings.versionFilter !== false
             ? "Descarta ao vivo, acústico, remix, karaokê, instrumental, cover, regravações e coletâneas."
             : "Vale qualquer versão que estiver nas fontes."} />
+        <Option title="Tema visual" value={settings.theme ?? "party"} onChange={(v) => update({ theme: v })}
+          options={[["party", "🎉 Festa"], ["neon", "💜 Neon"], ["retro", "🕹️ Retrô 80"], ["beach", "🏖️ Praia"], ["xmas", "🎄 Natal"]]}
+          hint="Fundo da TV e dos celulares." />
         <Option title="Efeitos sonoros" value={settings.sounds} onChange={(v) => update({ sounds: v })}
           options={[[true, "Ligados"], [false, "Desligados"]]} />
         {settings.sounds && (

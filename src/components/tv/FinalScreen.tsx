@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { FinalControls } from "@/components/control/FinalControls";
+import { EmojiRain } from "@/components/EmojiRain";
 import { Logo, TeamChip } from "@/components/ui";
 import { textOn } from "@/lib/colors";
 import { artistCredits, finalRanking, formatSeconds, isHostStyle, matchStats } from "@/lib/game";
@@ -38,7 +39,14 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     : null;
 
   return (
-    <main className="flex flex-1 flex-col items-center gap-8 p-8">
+    <main className="relative flex flex-1 flex-col items-center gap-8 p-8">
+      <EmojiRain
+        key={matchNo}
+        emojis={[...firsts.map((x) => x.team.icon ?? "🏆"), "🏆", "🎉", "✨", "🥳", ...firsts.map((x) => x.team.icon ?? "🎊")]}
+        count={40}
+        waves={3}
+        size="text-7xl"
+      />
       <Logo className="text-4xl" />
       <h1 className="font-display text-6xl font-bold text-yellow-300">Fim de jogo! 🏆</h1>
       {firsts.length > 1 && (

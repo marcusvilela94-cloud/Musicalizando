@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GameControls, OverrideButtons, useGameActions } from "@/components/control/GameControls";
+import { EmojiRain } from "@/components/EmojiRain";
 import { Button, Equalizer, Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
 import { api, deezer } from "@/lib/api";
@@ -316,6 +317,10 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       )}
 
       {flash && round.status !== "revealed" && round.status !== "scoreboard" && <DecisionFlash state={state} attempt={flash} tiebreak={!!tb} />}
+      {/* celebração: chuva com o emoji do time que acertou */}
+      {flash?.status === "correct" && (
+        <EmojiRain key={flash.id} emojis={[teamById(state, flash.team_id)?.icon ?? "🎉", "🎉", "✨", teamById(state, flash.team_id)?.icon ?? "🎵"]} />
+      )}
 
       {tb && tbFresh && <SuddenDeathAnnounce state={state} tb={tb} />}
       {modeFresh && <ModeAnnounce mode={round.mode} />}

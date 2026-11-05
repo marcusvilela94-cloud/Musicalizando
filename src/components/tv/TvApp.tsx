@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { RoomTheme } from "@/components/EmojiRain";
 import { Button, Logo, Spinner } from "@/components/ui";
 import { useRoom } from "@/hooks/useRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -115,6 +116,7 @@ export function TvApp() {
 
   return (
     <div className="relative flex flex-1 flex-col">
+      <RoomTheme theme={state.room.settings.theme} />
       {!connected && (
         <div className="absolute right-4 top-3 z-50 rounded-full bg-amber-500/90 px-3 py-1 text-sm text-black">
           reconectando…

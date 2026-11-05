@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { RoomTheme } from "@/components/EmojiRain";
 import { Button, Logo, Spinner, TeamChip } from "@/components/ui";
 import { useRoom } from "@/hooks/useRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { api } from "@/lib/api";
-import { textOn } from "@/lib/colors";
+import { PALETTE, textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { currentRound, finalRanking, roundDelta, teamById, tiebreakOf } from "@/lib/game";
 import { ICONS, teamLabel } from "@/lib/icons";
@@ -110,6 +111,7 @@ function PlayerApp({ code, token }: { code: string; token: string }) {
         <span className="ml-auto">{team && <TeamChip team={team} className="text-sm" />}</span>
         {!connected && <span className="h-2 w-2 rounded-full bg-amber-400" title="reconectando" />}
       </header>
+      <RoomTheme theme={state.room.settings.theme} />
       <main className="relative flex flex-1 flex-col items-center justify-center gap-5 p-5 text-center">
         <PhoneBody state={state} ctx={ctx} />
         {state.room.paused && state.room.phase === "playing" && (
@@ -190,7 +192,7 @@ function NameForm({ code, token, onJoined, removed }: { code: string; token: str
 function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; midGame?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [picking, setPicking] = useState<"me" | "team" | null>(null);
+  const [picking, setPicking] = useState<"me" | "team" | "color" | null>(null);
   const [name, setName] = useState("");
   const solo = state.room.settings.teamMode === "solo";
 
@@ -269,6 +271,30 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
           <Button variant="secondary" onClick={() => setPicking(picking === "team" ? null : "team")}>
             {ctx.team.icon ?? "🙂"} Trocar ícone do time
           </Button>
+          <Button variant="secondary" onClick={() => setPicking(picking === "color" ? null : "color")}>
+            <span className="mr-1 inline-block h-4 w-4 rounded-full align-middle ring-2 ring-white/60" style={{ background: ctx.team.color }} /> Trocar cor do time
+          </Button>
+          {picking === "color" && (
+            <div className="npl-pop grid grid-cols-6 gap-2 rounded-2xl bg-black/30 p-3">
+              {PALETTE.map((p) => {
+                const taken = state.teams.some((t) => t.id !== ctx.team!.id && t.color.toUpperCase() === p.color);
+                const current = ctx.team!.color.toUpperCase() === p.color;
+                return (
+                  <button
+                    key={p.color}
+                    title={taken ? `${p.name} (já é de outro time)` : p.name}
+                    disabled={taken}
+                    onClick={() => {
+                      setPicking(null);
+                      api.setTeamColor(ctx.code, ctx.token, ctx.team!.id, p.color).catch((err) => setError(friendlyError(err)));
+                    }}
+                    className={`aspect-square rounded-full transition active:scale-90 ${current ? "ring-4 ring-white" : ""} ${taken ? "opacity-25" : ""}`}
+                    style={{ background: p.color }}
+                  />
+                );
+              })}
+            </div>
+          )}
           {picking === "team" && (
             <IconGrid
               current={ctx.team.icon}

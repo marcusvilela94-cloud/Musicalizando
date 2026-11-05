@@ -14,6 +14,8 @@ export type RoomStyle = "all" | "host"; // "Todos jogam" | "Com apresentador"
 export type SfxVolume = "low" | "medium" | "high";
 /** Trechos: "sequence" = todos do início da prévia; "alternate" = cada um num ponto sorteado. */
 export type ClipMode = "sequence" | "alternate";
+/** Tema visual da sala. */
+export type RoomTheme = "party" | "neon" | "retro" | "beach" | "xmas";
 /** Empate no 1º lugar: "sudden" = morte súbita (música extra); "accept" = aceitar empate. */
 export type Tiebreak = "sudden" | "accept";
 
@@ -40,6 +42,7 @@ export type RoomSettings = {
   clipMode?: ClipMode; // trechos (padrão "sequence")
   tiebreak?: Tiebreak; // desempate (padrão "sudden")
   versionFilter?: boolean; // descarta ao vivo, acústico, remix, coletâneas… (padrão true)
+  theme?: RoomTheme; // visual da TV e dos celulares (padrão "party")
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
