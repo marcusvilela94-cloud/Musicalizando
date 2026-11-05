@@ -49,8 +49,14 @@ export const api = {
     call<void>("npl_rematch_vote", { p_code: code, p_token: token, p_value: value }),
 
   // partida
-  startMatch: (code: string, owner: string, tracks: PickedTrack[]) =>
-    call<{ match_no: number; total_rounds: number }>("npl_start_match", { p_code: code, p_owner_token: owner, p_tracks: tracks }),
+  /** rounds: quantas rodadas jogar (modo letra com menos músicas com letra que o escolhido). */
+  startMatch: (code: string, owner: string, tracks: PickedTrack[], rounds: number) =>
+    call<{ match_no: number; total_rounds: number }>("npl_start_match", {
+      p_code: code,
+      p_owner_token: owner,
+      p_tracks: tracks,
+      p_rounds: rounds,
+    }),
   /** meta = gênero/ano do álbum (dica do Leilão; ignorado no clássico). */
   roundBegin: (code: string, host: string, roundId: string, artists: string[], offsets: number[], meta: TrackMeta | null) =>
     call<unknown>("npl_round_begin", {
@@ -171,11 +177,12 @@ export const deezer = {
     getJson<{ id: string; name: string; picture: string | null; fans: number }[]>(
       `/api/deezer/artists?q=${encodeURIComponent(q)}`,
     ),
-  build: (sources: RoomSettings["sources"], count: number, versionFilter: boolean) =>
-    getJson<{ tracks: PickedTrack[]; warnings: string[] }>("/api/deezer/build", {
+  /** lyrics: "all" = só músicas com letra; "some" = busca letra para as que tiverem. */
+  build: (sources: RoomSettings["sources"], count: number, versionFilter: boolean, lyrics: "none" | "some" | "all") =>
+    getJson<{ tracks: PickedTrack[]; warnings: string[]; withLyrics: number }>("/api/deezer/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources, count, versionFilter }),
+      body: JSON.stringify({ sources, count, versionFilter, lyrics }),
     }),
   track: (id: number | string) =>
     getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),

@@ -32,6 +32,7 @@ import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
+import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
 import type { TvRoundViewProps } from "@/modes/types";
 import type { TvCtx } from "./TvApp";
 
@@ -345,9 +346,12 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
 function StageBar({ round }: { round: Round }) {
   const mode = getMode(round.mode);
   const noPoints = !!tiebreakOf(round);
+  // modo letra: só os versos que esta música tem (3 a 5)
+  const lyr = lyricsOf(round);
+  const stages = lyr ? mode.stages.slice(0, lyr.total) : mode.stages;
   return (
-    <div className="grid w-full max-w-5xl gap-2" style={{ gridTemplateColumns: `repeat(${mode.stages.length}, 1fr)` }}>
-      {mode.stages.map((s, i) => {
+    <div className="grid w-full max-w-5xl gap-2" style={{ gridTemplateColumns: `repeat(${stages.length}, 1fr)` }}>
+      {stages.map((s, i) => {
         const n = i + 1;
         const st = n < round.stage ? "past" : n === round.stage ? "now" : "next";
         return (
@@ -357,7 +361,7 @@ function StageBar({ round }: { round: Round }) {
               st === "now" ? "bg-yellow-300 text-violet-950 scale-105 shadow-lg" : st === "past" ? "bg-white/10 text-white/40" : "bg-white/20 text-white/90"
             }`}
           >
-            <div className="text-2xl font-bold">{s.seconds}s</div>
+            <div className="text-2xl font-bold">{lyr ? `${n}º verso` : `${s.seconds}s`}</div>
             {!noPoints && <div className="text-lg">{s.points} pts</div>}
           </div>
         );
@@ -416,15 +420,16 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
         )}
         {locks.map((l) => (
           <span key={l.team.id} className="rounded-full px-4 py-1 text-2xl tabular-nums" style={{ background: l.team.color, color: textOn(l.team.color), opacity: 0.75 }}>
-            🔒 {l.team.name} {lockLabel(l)}
+            🔒 {l.team.name} {lockLabel(l, round)}
           </span>
         ))}
       </div>
       <FoundParts state={state} round={round} />
 
+      {lyricsOf(round) && <LyricsStack round={round} />}
       {round.status === "playing" && (
         <div className="flex flex-col items-center gap-4 text-pink-300">
-          {clipPlaying ? (
+          {lyricsOf(round) ? null : clipPlaying ? (
             <Equalizer className="h-24 [&>span]:w-5" />
           ) : (
             <p className="font-display text-3xl text-white/60">
@@ -516,6 +521,9 @@ function RevealView({ state, round, ctx, contest }: { state: RoomState; round: R
       <div className="flex flex-1 flex-col gap-4 text-center lg:text-left">
         <p className="font-display text-6xl font-bold leading-tight">{r?.title}</p>
         <p className="font-display text-4xl text-pink-300">{r ? artistCredits(r) : ""}</p>
+        {lyricsOf(round)?.plain && (
+          <LyricsReveal round={round} stage={attempts.find((a) => a.status === "correct")?.stage ?? null} />
+        )}
         {auc?.hint === "genre" && auc.year && (
           <p className="font-display text-2xl text-white/80">
             📅 {auc.year}

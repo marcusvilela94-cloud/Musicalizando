@@ -8,12 +8,14 @@ import type { MusicSource, RoomSettings, RoomState } from "@/lib/types";
 const PRESET_SOURCES: MusicSource[] = [{ type: "preset", id: "top_brasil", label: "Top Brasil" }];
 const sameSource = (a: MusicSource, b: MusicSource) => a.type === b.type && a.id === b.id;
 
-type GameMode = "classic" | "auction" | "mix";
+type GameMode = "classic" | "auction" | "lyrics" | "mix";
 const MODE_HINTS: Record<GameMode, string> = {
   classic: "Trechos crescentes (1s, 2s, 4s…): quem apertar EU SEI! primeiro responde. Quanto antes, mais pontos.",
   auction:
     "A TV dá uma dica (artista, ou gênero e ano). Os times dão lances de quantos segundos precisam (começa em 20s); o menor lance ouve primeiro. Acerto vale 100. Sem penalidade.",
-  mix: "Cada rodada sorteia Clássico ou Leilão.",
+  lyrics:
+    "Sem som: a TV mostra trechos da letra (título e artista viram ___), um verso por vez. Quanto menos versos, mais pontos: 100, 75, 50, 30 e 15 no refrão. A prévia toca na revelação.",
+  mix: "Cada rodada sorteia Clássico, Leilão ou Só pela letra (músicas sem letra não caem no modo letra).",
 };
 
 /**
@@ -49,15 +51,23 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
 
   // "Misturar" = sorteia o modo de cada rodada entre Clássico e Leilão
   const gameMode: GameMode =
-    settings.modeSelection === "random" && settings.modePool.length > 1 ? "mix" : settings.mode === "auction" ? "auction" : "classic";
+    settings.modeSelection === "random" && settings.modePool.length > 1
+      ? "mix"
+      : settings.mode === "auction" || settings.mode === "lyrics"
+        ? settings.mode
+        : "classic";
   // opções que só valem no Clássico: escondidas no Leilão (o valor fica guardado),
   // com etiqueta "só no Clássico" ao misturar
+  // "O que vale", bloqueio e penalidade valem no Clássico e no Só pela letra;
+  // "Trechos" só no Clássico
   const showClassic = gameMode !== "auction";
-  const classicTag = gameMode === "mix" ? "só no Clássico" : undefined;
+  const classicTag = gameMode === "mix" ? "não vale no Leilão" : undefined;
+  const showClips = gameMode === "classic" || gameMode === "mix";
+  const clipsTag = gameMode === "mix" ? "só no Clássico" : undefined;
   const setGameMode = (m: GameMode) =>
     update(
       m === "mix"
-        ? { modeSelection: "random", modePool: ["classic", "auction"] }
+        ? { modeSelection: "random", modePool: ["classic", "auction", "lyrics"] }
         : { mode: m, modeSelection: "fixed", modePool: [m] },
     );
 
@@ -98,7 +108,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="flex flex-col gap-3 md:col-span-2">
           <h2 className="font-display text-xl font-semibold">Modo de jogo</h2>
-          <Segmented value={gameMode} options={[["classic", "🎵 Clássico"], ["auction", "🔨 Leilão"], ["mix", "🎲 Misturar"]]} onChange={setGameMode} />
+          <Segmented value={gameMode} options={[["classic", "🎵 Clássico"], ["auction", "🔨 Leilão"], ["lyrics", "📝 Só pela letra"], ["mix", "🎲 Misturar"]]} onChange={setGameMode} />
           <p className="text-sm text-white/60">{MODE_HINTS[gameMode]}</p>
         </Card>
         <Card className="flex flex-col gap-3">
@@ -124,8 +134,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             options={[["spoken", "Falada"], ["typed", "Digitada"]]}
             hint={settings.answerMode === "spoken" ? "O time fala em voz alta e o apresentador julga." : "O time digita no celular e o sistema confere."} />
         )}
-        {showClassic && (
-        <Option title="Trechos" tag={classicTag} value={settings.clipMode ?? "sequence"} onChange={(v) => update({ clipMode: v })}
+        {showClips && (
+        <Option title="Trechos" tag={clipsTag} value={settings.clipMode ?? "sequence"} onChange={(v) => update({ clipMode: v })}
           options={[["sequence", "Em sequência"], ["alternate", "Alternando"]]}
           hint={(settings.clipMode ?? "sequence") === "sequence"
             ? "Todos os trechos começam do início da prévia e vão crescendo: 1s, 2s, 4s, 8s, 15s, 30s."

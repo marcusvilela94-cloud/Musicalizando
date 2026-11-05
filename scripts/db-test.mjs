@@ -777,6 +777,76 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok desempate");
 }
 
+// ---------- modo "Só pela letra" ----------
+{
+  const { code: c6 } = await rpc("npl_create_room", OWNER, { mode: "lyrics", modePool: ["lyrics"], rounds: 5, answerSeconds: 10 });
+  let s6 = await rpc("npl_get_state", c6);
+  assert.equal(s6.room.settings.mode, "lyrics", "modo letra aceito");
+  const [la, lb] = [P(30), P(31)];
+  await rpc("npl_join", c6, la, "Ana");
+  await rpc("npl_join", c6, lb, "Bia");
+  s6 = await rpc("npl_get_state", c6);
+  const [TA, TB] = s6.teams.map((t) => t.id);
+  await rpc("npl_set_team", c6, la, TA);
+  await rpc("npl_set_team", c6, lb, TB);
+  const verses = (i) => ({
+    masked: [[`linha a${i}`, `linha b${i}`], [`linha c${i}`, `linha d${i}`], [`refrão ___ ${i}`, "de novo"]],
+    plain: [[`linha a${i}`, `linha b${i}`], [`linha c${i}`, `linha d${i}`], [`refrão Canção ${i}`, "de novo"]],
+  });
+  const lt = [1, 2, 3, 4].map((i) => ({
+    deezer_id: 7000 + i, title: `Canção ${i}`, title_short: `Canção ${i}`, artist: `Banda ${i}`, artists: [`Banda ${i}`], cover: "x",
+    lyrics: verses(i),
+  }));
+  // só 4 com letra: a TV avisa e começa com 4
+  const st6 = await rpc("npl_start_match", c6, OWNER, lt, 4);
+  assert.equal(st6.total_rounds, 4);
+  s6 = await rpc("npl_get_state", c6);
+  let r6 = s6.rounds[0];
+  assert.equal(r6.mode, "lyrics");
+  assert.deepEqual(r6.lyrics, {}, "nada da letra antes de abrir");
+  assert.ok(!JSON.stringify(s6).includes("linha a"), "letra não vaza no estado");
+  await rpc("npl_round_begin", c6, OWNER, r6.id, [], [], {});
+  s6 = await rpc("npl_get_state", c6);
+  r6 = s6.rounds[0];
+  assert.equal(r6.lyrics.total, 3);
+  assert.equal(r6.lyrics.shown.length, 1, "1º verso aparece");
+  assert.ok(!JSON.stringify(s6).includes("linha c"), "só os versos revelados");
+  assert.equal(r6.lyrics.plain, undefined);
+  assert.equal((await rpc("npl_play", c6, OWNER, r6.id, 1, false)).ok, false, "sem tocar no modo letra");
+  // erro no 1º verso: bloqueio aguarda o próximo verso
+  let bz6 = await rpc("npl_buzz", c6, la, r6.id);
+  assert.equal(bz6.ok, true);
+  await rpc("npl_submit_answer", c6, la, bz6.attempt_id, "", "nada a ver");
+  s6 = await rpc("npl_get_state", c6);
+  assert.equal(s6.rounds[0].locks[TA].until, null, "aguardando o próximo verso");
+  const adv = await rpc("npl_play", c6, OWNER, r6.id, 1, true);
+  assert.equal(adv.ok, true);
+  assert.equal(adv.round.lyrics.shown.length, 2);
+  assert.ok(adv.round.locks[TA].until, "contagem começou com o novo verso");
+  bz6 = await rpc("npl_buzz", c6, lb, r6.id);
+  const res6 = await rpc("npl_submit_answer", c6, lb, bz6.attempt_id, "", "Canção 1");
+  assert.equal(res6.result, "partial", "música certa, falta o artista");
+  assert.equal(res6.points, 75, "2 versos = 75");
+  await rpc("npl_play", c6, OWNER, r6.id, 2, true);
+  assert.equal((await rpc("npl_play", c6, OWNER, r6.id, 3, true)).ok, false, "acabaram os versos");
+  await rpc("npl_end_round", c6, OWNER, r6.id);
+  s6 = await rpc("npl_get_state", c6);
+  assert.equal(s6.rounds[0].lyrics.plain[2][0], "refrão Canção 1", "revelação mostra sem ___");
+
+  // misturar: música sem letra nunca cai no modo letra
+  const room6 = (await sql("select id, match_no from npl_rooms where code = $1", [c6]))[0];
+  room6.settings = { modeSelection: "random", modePool: ["lyrics", "classic", "auction"], mode: "lyrics" };
+  await sql("insert into npl_tracks (room_id, match_no, position, deezer_id, title, artist) values ($1, $2, 99, 1, 'x', 'y')", [room6.id, room6.match_no]);
+  const picks = new Set();
+  for (let i = 0; i < 40; i++) picks.add((await sql("select public.npl_round_mode($1, $2, 99, $3) as m", [room6.id, room6.match_no, room6.settings]))[0].m);
+  assert.ok(!picks.has("lyrics"), "sem letra -> outro modo");
+  assert.ok(picks.size >= 2, "sorteia entre os outros");
+  const lp = new Set();
+  for (let i = 0; i < 40; i++) lp.add((await sql("select public.npl_round_mode($1, $2, 1, $3) as m", [room6.id, room6.match_no, room6.settings]))[0].m);
+  assert.ok(lp.has("lyrics"), "com letra pode cair no modo letra");
+  console.log("ok modo letra");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

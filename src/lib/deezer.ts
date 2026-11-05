@@ -1,6 +1,7 @@
 // Acesso à API pública do Deezer. SÓ roda no servidor (rotas /api/deezer/*):
 // o Deezer bloqueia chamadas diretas do navegador por CORS.
 import "server-only";
+import { versesFor } from "./lyrics";
 import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
 import type { MusicSource, PickedTrack, TrackMeta } from "./types";
 
@@ -20,6 +21,7 @@ type DzTrack = {
   title_short?: string;
   title_version?: string;
   isrc?: string;
+  duration?: number;
   preview?: string;
   artist: DzArtist;
   contributors?: DzArtist[];
@@ -335,8 +337,16 @@ async function loadSource(src: MusicSource): Promise<DzTrack[]> {
  * equilibrada: as fontes se revezam (rodízio), então uma playlist de 200
  * não engole uma de 20. Com o filtro de versões, descarta ao vivo, acústico,
  * remix, karaokê, covers, regravações… e faixas de coletâneas.
+ *
+ * Letras (modo "Só pela letra"): "all" = só entram músicas com letra boa
+ * (as sem letra são trocadas por outras das mesmas fontes); "some" = busca a
+ * letra de todas, mas as sem letra entram mesmo assim (vão para outros modos).
  */
-export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true) {
+export type LyricsNeed = "none" | "some" | "all";
+/** Limite de músicas consultadas na LRCLIB por lista (para não demorar demais). */
+const MAX_LYRICS_LOOKUPS = 120;
+
+export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true, lyrics: LyricsNeed = "none") {
   const warnings: string[] = [];
   const pools: DzTrack[][] = [];
   const results = await Promise.allSettled(sources.map(loadSource));
@@ -373,7 +383,8 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
   // coletânea só dá para saber consultando o álbum: confere em lotes, em paralelo
   const picked: PickedTrack[] = [];
   const gen = candidates();
-  while (picked.length < count) {
+  let lookups = 0;
+  while (picked.length < count && lookups < MAX_LYRICS_LOOKUPS) {
     const batch: DzTrack[] = [];
     while (batch.length < count - picked.length) {
       const n = gen.next();
@@ -384,11 +395,21 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
     const keep = versionFilter
       ? await Promise.all(batch.map(async (t) => (await getAlbum(t.album?.id))?.record_type !== "compile"))
       : batch.map(() => true);
-    batch.forEach((t, i) => keep[i] && picked.push(toPicked(t)));
+    const verses = await Promise.all(
+      batch.map((t, i) => {
+        if (lyrics === "none" || !keep[i]) return null;
+        lookups++;
+        return versesFor({ title: t.title, titleShort: t.title_short ?? t.title, artist: t.artist?.name ?? "", duration: t.duration }).catch(() => null);
+      }),
+    );
+    batch.forEach((t, i) => {
+      if (!keep[i] || (lyrics === "all" && !verses[i])) return;
+      picked.push(verses[i] ? { ...toPicked(t), lyrics: verses[i]! } : toPicked(t));
+    });
   }
 
-  if (picked.length < count && picked.length > 0) {
+  if (picked.length < count && picked.length > 0 && lyrics !== "all") {
     warnings.push(`Só encontrei ${picked.length} músicas com prévia nas fontes escolhidas.`);
   }
-  return { tracks: shuffle(picked), warnings };
+  return { tracks: shuffle(picked), warnings, withLyrics: picked.filter((t) => t.lyrics).length };
 }

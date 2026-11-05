@@ -134,6 +134,7 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
   const busy = useRef(false);
   const [pressed, setPressed] = useState(false);
   const lock = lockInfo(round, team.id, now);
+  const lyrics = round.mode === "lyrics";
   const locked = !!lock;
   const bg = locked ? "#64748b" : team.color;
 
@@ -176,7 +177,7 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
           <>
             🔒
             <br />
-            <span className="tabular-nums">{lock!.waiting ? "Aguardando a música" : `Liberado em ${Math.ceil(lock!.ms / 1000)}s`}</span>
+            <span className="tabular-nums">{lock!.waiting ? (lyrics ? "Aguardando o próximo verso" : "Aguardando a música") : `Liberado em ${Math.ceil(lock!.ms / 1000)}s`}</span>
           </>
         ) : (
           "EU SEI!"
@@ -185,7 +186,7 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
       <p className="font-display text-xl text-white/80">
         {locked
           ? lock!.waiting
-            ? "Seu time errou — a contagem começa quando a música voltar"
+            ? `Seu time errou — a contagem começa quando ${lyrics ? "o próximo verso aparecer" : "a música voltar"}`
             : "Seu time errou — espere a contagem"
           : tiebreakOf(round)
             ? "☠️ Desempate: acerte a música e vença!"

@@ -118,7 +118,8 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
         )}
         {stage && round.status !== "loading" && (
           <span className="text-lg text-white/80">
-            Trecho {round.stage} · {stage.seconds}s{tb ? "" : ` · ${stage.points} pts`}
+            {round.mode === "lyrics" ? `Verso ${round.stage}` : `Trecho ${round.stage} · ${stage.seconds}s`}
+            {tb ? "" : ` · ${stage.points} pts`}
           </span>
         )}
       </div>
@@ -144,7 +145,7 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
       {locks.length > 0 && round.status === "playing" && (
         <div className="flex flex-wrap gap-2">
           {locks.map((l) => (
-            <TeamChip key={l.team.id} team={l.team} className="opacity-70 tabular-nums">🔒 {l.team.name} {lockLabel(l)}</TeamChip>
+            <TeamChip key={l.team.id} team={l.team} className="opacity-70 tabular-nums">🔒 {l.team.name} {lockLabel(l, round)}</TeamChip>
           ))}
         </div>
       )}

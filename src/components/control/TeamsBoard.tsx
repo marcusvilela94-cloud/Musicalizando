@@ -1,31 +1,20 @@
 "use client";
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { api, deezer } from "@/lib/api";
+import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import type { Player, RoomState, Team } from "@/lib/types";
-
-/** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
-const TIEBREAK_RESERVE = 5;
-
-/** Sorteia as músicas (rota do Next -> Deezer) e começa a partida. */
-export async function startMatch(state: RoomState, code: string, token: string): Promise<string[]> {
-  const { sources, rounds, tiebreak, versionFilter } = state.room.settings;
-  const extra = (tiebreak ?? "sudden") === "sudden" ? TIEBREAK_RESERVE : 0;
-  const { tracks, warnings: all } = await deezer.build(sources, rounds + extra, versionFilter !== false);
-  // o aviso de "poucas músicas" só interessa se faltou para as rodadas (não para as reservas)
-  const warnings = all.filter((w) => !w.startsWith("Só encontrei") || tracks.length < rounds);
-  await api.startMatch(code, token, tracks);
-  return warnings;
-}
+import { LyricsShortNotice, useMatchStarter } from "./matchStart";
 
 export function settingsSummary(state: RoomState) {
   const s = state.room.settings;
   // só Leilão: as opções do clássico não valem
   const auctionOnly = s.modeSelection !== "random" && s.mode === "auction";
+  const lyricsOnly = s.modeSelection !== "random" && s.mode === "lyrics";
   return [
     `${s.rounds} músicas`,
+    lyricsOnly ? "só pela letra" : s.modeSelection === "random" ? "modos misturados" : s.mode === "auction" ? "leilão" : "",
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
     auctionOnly ? "" : s.scoring === "title" ? "só a música" : "artista e música",
     s.roomStyle === "host" ? (s.answerMode === "spoken" ? "resposta falada" : "resposta digitada") : "resposta digitada",
@@ -44,8 +33,9 @@ export type Control = { code: string; token: string; onConfig: () => void };
  * apresentador) dá para mexer: sortear, mover, remover e começar.
  */
 export function TeamsBoard({ state, online, control, compact }: { state: RoomState; online: Set<string>; control?: Control; compact?: boolean }) {
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const m = useMatchStarter(state, control?.code ?? "", control?.token ?? "");
+  const busy = m.busy;
   const [selected, setSelected] = useState<string | null>(null);
   const s = state.room.settings;
   const solo = s.teamMode === "solo";
@@ -61,19 +51,7 @@ export function TeamsBoard({ state, online, control, compact }: { state: RoomSta
       setError(friendlyError(e));
     }
   };
-  const start = async () => {
-    if (!control) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const warnings = await startMatch(state, control.code, control.token);
-      if (warnings.length) setError(warnings.join(" "));
-    } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const start = () => control && m.start();
   const move = (playerId: string, teamId: string | null) =>
     control && run(() => api.movePlayer(control.code, control.token, playerId, teamId)).then(() => setSelected(null));
   const select = (id: string) => control && setSelected(selected === id ? null : id);
@@ -145,9 +123,10 @@ export function TeamsBoard({ state, online, control, compact }: { state: RoomSta
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         <p className="text-white/60 mr-auto">{settingsSummary(state)}</p>
-        {error && <p className="w-full text-right text-rose-300 text-lg">{error}</p>}
+        {(error ?? m.error) && <p className="w-full text-right text-rose-300 text-lg">{error ?? m.error}</p>}
+        {control && <LyricsShortNotice m={m} compact={compact} />}
         {control ? (
-          <Button className={compact ? "w-full text-2xl py-4" : "text-3xl px-12 py-5"} disabled={!canStart || busy} onClick={start}>
+          <Button className={compact ? "w-full text-2xl py-4" : "text-3xl px-12 py-5"} disabled={!canStart || busy || !!m.short} onClick={start}>
             {busy ? "Sorteando músicas…" : "Começar! ▶"}
           </Button>
         ) : (

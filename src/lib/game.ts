@@ -1,5 +1,6 @@
 // Sem importar o registro de modos (src/modes): as telas dos modos usam este arquivo.
 import { CLASSIC_STAGES } from "@/modes/classic/stages";
+import { LYRICS_STAGES } from "@/modes/lyrics/stages";
 import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
 import type { Attempt, RoomState, Round, Team, TiebreakState } from "./types";
 
@@ -41,7 +42,11 @@ export function missingParts(s: RoomState, r: Round) {
 
 /** Pontos do estágio atual (= valor da música). Artista vale metade. Leilão: 100 fixos. */
 export const stagePoints = (r: Round) =>
-  tiebreakOf(r) ? 0 : r.mode === "auction" ? AUCTION_POINTS : CLASSIC_STAGES[Math.max(0, r.stage - 1)]?.points ?? 0;
+  tiebreakOf(r)
+    ? 0
+    : r.mode === "auction"
+      ? AUCTION_POINTS
+      : ((r.mode === "lyrics" ? LYRICS_STAGES : CLASSIC_STAGES)[Math.max(0, r.stage - 1)]?.points ?? 0);
 export const artistPoints = (pts: number) => Math.round(pts * 0.5);
 
 /** Quanto vale acertar cada parte agora. */
@@ -78,9 +83,9 @@ export function lockedTeams(s: RoomState, r: Round | null, now: number) {
   });
 }
 
-/** Texto curto do bloqueio: "aguardando a música" ou "12s". */
-export const lockLabel = (l: { waiting: boolean; ms: number }) =>
-  l.waiting ? "aguardando a música" : `${Math.ceil(l.ms / 1000)}s`;
+/** Texto curto do bloqueio: "aguardando a música" (modo letra: "o próximo verso") ou "12s". */
+export const lockLabel = (l: { waiting: boolean; ms: number }, r?: Round | null) =>
+  l.waiting ? (r?.mode === "lyrics" ? "aguardando o próximo verso" : "aguardando a música") : `${Math.ceil(l.ms / 1000)}s`;
 
 /** Todos os artistas creditados, principal primeiro: "Major Lazer, Anitta, Pabllo Vittar". */
 export function artistCredits(r: { artist: string; artists?: string[] | null }) {
@@ -162,7 +167,7 @@ export function matchStats(s: RoomState) {
   const rounds = s.rounds.filter((r) => !tiebreakOf(r));
   const roundOf = (a: Attempt) => rounds.find((r) => r.id === a.round_id);
   const correct = s.attempts.filter((a) => a.kind === "turn" && a.status === "correct" && roundOf(a));
-  const classicCorrect = correct.filter((a) => roundOf(a)?.mode !== "auction");
+  const classicCorrect = correct.filter((a) => roundOf(a)?.mode === "classic");
   const fastest = [...classicCorrect].sort((a, b) => a.stage - b.stage || a.ms_into_stage - b.ms_into_stage)[0];
   const steals = new Map<string, number>();
   for (const a of classicCorrect) if (a.steal && a.team_id) steals.set(a.team_id, (steals.get(a.team_id) ?? 0) + 1);
@@ -185,7 +190,7 @@ export function matchStats(s: RoomState) {
     fastest: fastest ? { team: teamById(s, fastest.team_id), round: roundOf(fastest), attempt: fastest } : null,
     topSteal: topSteal ? { team: teamById(s, topSteal[0]), count: topSteal[1] } : null,
     nobody,
-    hadClassic: rounds.some((r) => r.mode !== "auction"),
+    hadClassic: rounds.some((r) => r.mode === "classic"),
     hadAuction: auctionRounds.length > 0,
     boldest: boldest ? { team: teamById(s, boldest.team_id), round: roundOf(boldest), secs: boldest.stage } : null,
     topAuction: topWins[0]

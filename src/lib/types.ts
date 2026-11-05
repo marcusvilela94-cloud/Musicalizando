@@ -18,7 +18,7 @@ export type Tiebreak = "sudden" | "accept";
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
-export type ModeId = "classic" | "auction";
+export type ModeId = "classic" | "auction" | "lyrics";
 
 export type RoomSettings = {
   mode: ModeId; // modo fixo da partida
@@ -41,6 +41,9 @@ export type RoomSettings = {
   sources: MusicSource[];
 };
 
+/** Modo letra: trechos de 2 linhas (o último é o refrão). masked = título/artista viram "___". */
+export type LyricVerses = { masked: string[][]; plain: string[][] };
+
 export type PickedTrack = {
   deezer_id: number;
   title: string;
@@ -49,6 +52,7 @@ export type PickedTrack = {
   artists: string[];
   cover: string | null;
   album: string | null;
+  lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
 };
 
 /**
@@ -98,6 +102,7 @@ export type Reveal = {
   artists: string[];
   cover: string | null;
   album: string | null;
+  lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
 };
 
 /** Leilão: "artist" = TV mostra o artista (vale a música); "genre" = gênero + ano (vale o artista). */
@@ -125,6 +130,13 @@ export type AuctionState = {
   qidx: number; // posição atual da fila
   played: number; // última posição que já ouviu o trecho
   winner: string | null; // venceu o leilão (menor lance)
+};
+
+/** Modo letra: o que todos veem (o servidor só manda os trechos já revelados). */
+export type LyricsState = {
+  total: number; // quantos trechos a música tem (3 a 5)
+  shown: string[][]; // trechos revelados, com "___"
+  plain?: string[][]; // só depois da revelação: todos os trechos sem "___"
 };
 
 /** Rodada de desempate (morte súbita): só os times empatados no 1º lugar jogam. */
@@ -161,6 +173,7 @@ export type Round = {
   locks: Record<string, TeamLock>; // team_id -> bloqueio (relógio do servidor)
   auction: Partial<AuctionState>; // vazio ({}) fora do leilão
   tiebreak?: Partial<TiebreakState>; // vazio ({}) fora do desempate
+  lyrics?: Partial<LyricsState>; // vazio ({}) fora do modo letra
   created_at: string;
   started_at: string | null;
   revealed_at: string | null;
