@@ -45,6 +45,11 @@ export const api = {
     call<void>("npl_move_player", { p_code: code, p_owner_token: owner, p_player_id: playerId, p_team_id: teamId }),
   removePlayer: (code: string, owner: string, playerId: string) =>
     call<void>("npl_remove_player", { p_code: code, p_owner_token: owner, p_player_id: playerId }),
+  /** Ícone (emoji) do jogador. */
+  setIcon: (code: string, token: string, icon: string) => call<void>("npl_set_icon", { p_code: code, p_token: token, p_icon: icon }),
+  /** Ícone do time (quem está no time, o dono ou o apresentador). */
+  setTeamIcon: (code: string, token: string, teamId: string, icon: string) =>
+    call<void>("npl_set_team_icon", { p_code: code, p_token: token, p_team_id: teamId, p_icon: icon }),
   rematchVote: (code: string, token: string, value: boolean) =>
     call<void>("npl_rematch_vote", { p_code: code, p_token: token, p_value: value }),
 

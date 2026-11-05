@@ -8,6 +8,7 @@ import { friendlyError } from "@/lib/errors";
 import { formatSeconds, lateTaps, missingParts, teamById } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import type { PhoneCtx } from "./PhoneApp";
+import { teamLabel } from "@/lib/icons";
 
 export const vibrate = (p: number | number[]) => {
   try {
@@ -169,7 +170,7 @@ export function OtherAnswering({ state, ctx, attempt, now, spoken }: { state: Ro
   if (!t) return null;
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: t.color, color: textOn(t.color) }}>
-      <p className="font-display text-4xl font-bold">{t.name}</p>
+      <p className="font-display text-4xl font-bold">{teamLabel(t)}</p>
       <p className="font-display text-2xl">{spoken ? "está respondendo…" : "está digitando…"}</p>
       {left !== null && <p className="font-display text-6xl font-bold tabular-nums">{Math.ceil(left / 1000)}</p>}
       {mine && <p className="text-lg opacity-90">Seu time apertou {formatSeconds(mine.ms)}s depois 😬</p>}

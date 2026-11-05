@@ -6,6 +6,7 @@ import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import type { Player, RoomState, Team } from "@/lib/types";
 import { LyricsShortNotice, useMatchStarter } from "./matchStart";
+import { playerLabel, teamLabel } from "@/lib/icons";
 
 export function settingsSummary(state: RoomState) {
   const s = state.room.settings;
@@ -107,11 +108,11 @@ export function TeamsBoard({ state, online, control, compact }: { state: RoomSta
       {control && selected && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-black/30 p-3">
           <span className="text-white/80">
-            Mover <b>{state.players.find((p) => p.id === selected)?.nickname}</b> para:
+            Mover <b>{(() => { const sp = state.players.find((p) => p.id === selected); return sp ? playerLabel(sp) : ""; })()}</b> para:
           </span>
           {state.teams.map((t) => (
             <button key={t.id} className="rounded-full px-3 py-1 font-display" style={{ background: t.color, color: textOn(t.color) }} onClick={() => move(selected, t.id)}>
-              {t.name}
+              {teamLabel(t)}
             </button>
           ))}
           <Button variant="danger" className="ml-auto py-1 text-sm" onClick={() => run(() => api.removePlayer(control.code, control.token, selected)).then(() => setSelected(null))}>
@@ -179,7 +180,7 @@ function TeamColumn({
           }}
           title={control ? "Clique para renomear" : undefined}
         >
-          {team.name}
+          {teamLabel(team)}
         </button>
       )}
       <ul className="flex flex-col gap-2 min-h-12">
@@ -200,7 +201,7 @@ function PlayerItem({ p, online, selected, onClick }: { p: Player; online: boole
         className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xl text-left transition ${selected ? "bg-yellow-300 text-violet-950" : "bg-white/10 hover:bg-white/20"}`}
       >
         <span className={`h-2.5 w-2.5 rounded-full ${online ? "bg-emerald-400" : "bg-white/30"}`} />
-        {p.nickname}
+        {playerLabel(p)}
       </button>
     </li>
   );

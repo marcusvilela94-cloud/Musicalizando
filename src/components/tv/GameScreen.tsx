@@ -35,6 +35,7 @@ import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
 import type { TvRoundViewProps } from "@/modes/types";
 import type { TvCtx } from "./TvApp";
+import { playerLabel, teamLabel } from "@/lib/icons";
 
 /** A música da revelação espera o efeito sonoro terminar. */
 const REVEAL_MUSIC_DELAY_MS = 1200;
@@ -461,8 +462,8 @@ function TurnPanel({ state, attempt, now }: { state: RoomState; attempt: Attempt
   if (!team) return null;
   return (
     <div className="npl-pop flex w-full max-w-4xl flex-col items-center gap-4 rounded-[2.5rem] p-8 text-center" style={{ background: team.color, color: textOn(team.color) }}>
-      <p className="font-display text-3xl opacity-80">{player?.nickname ?? "Alguém"} apertou!</p>
-      <p className="font-display text-7xl font-bold">{team.name}</p>
+      <p className="font-display text-3xl opacity-80">{player ? playerLabel(player) : "Alguém"} apertou!</p>
+      <p className="font-display text-7xl font-bold">{teamLabel(team)}</p>
       <p className="font-display text-3xl">{spoken ? "Respondendo…" : "digitando a resposta…"}</p>
       {left !== null ? (
         <p className={`font-display text-9xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</p>
@@ -495,7 +496,7 @@ function DecisionFlash({ state, attempt, tiebreak }: { state: RoomState; attempt
         <p className="font-display text-9xl">{ok ? "✓" : "✗"}</p>
         <p className="font-display text-6xl font-bold">{ok ? `Acertou ${parts || ""}!` : attempt.status === "timeout" ? "Tempo esgotado!" : "Errou!"}</p>
         {tiebreak && !ok && <p className="font-display text-4xl">Fora do desempate</p>}
-        {team && <p className="font-display text-4xl">{team.name} {attempt.points > 0 ? `+${attempt.points}` : attempt.points < 0 ? attempt.points : ""}</p>}
+        {team && <p className="font-display text-4xl">{teamLabel(team)} {attempt.points > 0 ? `+${attempt.points}` : attempt.points < 0 ? attempt.points : ""}</p>}
       </div>
     </div>
   );
@@ -612,7 +613,7 @@ function ScoreboardView({ state, round }: { state: RoomState; round: Round }) {
         return (
           <div key={team.id} className="npl-pop flex items-center gap-4 rounded-3xl px-6 py-4" style={{ background: team.color, color: textOn(team.color) }}>
             <span className="font-display text-5xl font-bold w-16">{pos}º</span>
-            <span className="font-display text-4xl font-semibold flex-1 truncate">{team.name}</span>
+            <span className="font-display text-4xl font-semibold flex-1 truncate">{teamLabel(team)}</span>
             {d !== 0 && <span className="font-display text-3xl opacity-80">{d > 0 ? `+${d}` : d}</span>}
             <span className="font-display text-5xl font-bold tabular-nums">{team.score}</span>
           </div>

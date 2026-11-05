@@ -5,6 +5,7 @@ import { textOn } from "@/lib/colors";
 import { artistCredits, teamById } from "@/lib/game";
 import type { AuctionState, RoomState } from "@/lib/types";
 import { auctionGoal } from "./logic";
+import { teamLabel } from "@/lib/icons";
 
 const SIZES = {
   tv: { box: "gap-3 rounded-[2rem] px-10 py-6", tag: "text-2xl", main: "text-6xl", goal: "text-3xl" },
@@ -50,7 +51,7 @@ export function BidBoard({ state, a, size = "tv" }: { state: RoomState; a: Aucti
             } ${passed && !low ? "opacity-60" : ""}`}
             style={{ background: t.color, color: textOn(t.color) }}
           >
-            <span className={`font-display font-semibold truncate max-w-full ${tv ? "text-2xl" : "text-sm"}`}>{t.name}</span>
+            <span className={`font-display font-semibold truncate max-w-full ${tv ? "text-2xl" : "text-sm"}`}>{teamLabel(t)}</span>
             <span className={`font-display font-bold tabular-nums ${tv ? "text-6xl" : "text-3xl"}`}>{bid !== undefined ? `${bid}s` : "—"}</span>
             <span className={`font-display ${tv ? "text-xl" : "text-xs"}`}>
               {low ? "👑 menor lance" : turn ? "⏳ na vez" : passed ? "pode tocar!" : " "}

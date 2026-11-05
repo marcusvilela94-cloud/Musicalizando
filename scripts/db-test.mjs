@@ -847,6 +847,37 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok modo letra");
 }
 
+// ---------- ícones ----------
+{
+  const { code: c7 } = await rpc("npl_create_room", OWNER, { teamCount: 3 });
+  const [ia, ib] = [P(40), P(41)];
+  await rpc("npl_join", c7, ia, "Ana");
+  await rpc("npl_join", c7, ib, "Bia");
+  let s7 = await rpc("npl_get_state", c7);
+  const icons = (await sql("select public.npl_icons() as a"))[0].a;
+  assert.ok(s7.teams.every((t) => icons.includes(t.icon)), "time nasce com ícone");
+  assert.equal(new Set(s7.teams.map((t) => t.icon)).size, 3, "ícones diferentes na sala");
+  assert.ok(s7.players.every((p) => icons.includes(p.icon)), "jogador nasce com ícone");
+  await rpc("npl_set_icon", c7, ia, "🦖");
+  await fails(rpc("npl_set_icon", c7, ia, "lol"), "bad_icon");
+  const [TA, TB] = s7.teams.map((t) => t.id);
+  await rpc("npl_set_team", c7, ia, TA);
+  await rpc("npl_set_team_icon", c7, ia, TA, "🌮");
+  await fails(rpc("npl_set_team_icon", c7, ib, TA, "🍕"), "not_allowed");
+  await rpc("npl_set_team_icon", c7, OWNER, TB, "🍕");
+  s7 = await rpc("npl_get_state", c7);
+  assert.equal(s7.players.find((p) => p.nickname === "Ana").icon, "🦖");
+  assert.equal(s7.teams.find((t) => t.id === TA).icon, "🌮");
+  assert.equal(s7.teams.find((t) => t.id === TB).icon, "🍕");
+  // cada um por si: o time usa o ícone do jogador
+  await rpc("npl_update_settings", c7, OWNER, { teamMode: "solo" });
+  await rpc("npl_set_icon", c7, ib, "👽");
+  s7 = await rpc("npl_get_state", c7);
+  const bia = s7.players.find((p) => p.nickname === "Bia");
+  assert.equal(s7.teams.find((t) => t.id === bia.team_id).icon, "👽");
+  console.log("ok ícones");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

@@ -28,6 +28,7 @@ import {
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
+import { teamLabel } from "@/lib/icons";
 
 type Answer = { round_id: string; title: string; artist: string; artists: string[] } | null;
 
@@ -213,7 +214,7 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
   return (
     <div className="flex flex-col gap-3 rounded-2xl p-3" style={{ background: `${team.color}33`, border: `3px solid ${team.color}` }}>
       <div className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: team.color, color: textOn(team.color) }}>
-        <span className="font-display text-xl font-bold">{team.name} {spoken ? "vai falar" : "está digitando"}</span>
+        <span className="font-display text-xl font-bold">{teamLabel(team)} {spoken ? "vai falar" : "está digitando"}</span>
         <span className="font-display text-4xl font-bold tabular-nums">{left !== null ? Math.ceil(left / 1000) : "∞"}</span>
       </div>
       {spoken ? (
@@ -309,7 +310,7 @@ function ScoreList({ state }: { state: RoomState }) {
         <div key={team.id} className="flex items-center gap-3 rounded-xl px-3 py-2" style={{ background: team.color, color: textOn(team.color) }}>
           <span className="font-display text-2xl font-bold w-10">{pos}º</span>
           <span className="flex-1 font-display text-xl truncate">
-            {team.name}
+            {teamLabel(team)}
             {wonTiebreak && <span className="block text-xs font-sans opacity-80">venceu no desempate</span>}
           </span>
           <span className="font-display text-2xl font-bold tabular-nums">{team.score}</span>
@@ -329,7 +330,7 @@ function ScoreFix({ state, code, token }: { state: RoomState; code: string; toke
         ranking(state.teams).map(({ team, pos }) => (
           <div key={team.id} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: team.color, color: textOn(team.color) }}>
             <span className="font-display w-8">{pos}º</span>
-            <span className="flex-1 truncate font-display">{team.name}</span>
+            <span className="flex-1 truncate font-display">{teamLabel(team)}</span>
             <button className="rounded-lg bg-black/25 px-3 py-1" onClick={() => api.adjustScore(code, token, team.id, -10).catch(() => {})}>−10</button>
             <span className="w-12 text-center font-display text-xl tabular-nums">{team.score}</span>
             <button className="rounded-lg bg-black/25 px-3 py-1" onClick={() => api.adjustScore(code, token, team.id, 10).catch(() => {})}>+10</button>

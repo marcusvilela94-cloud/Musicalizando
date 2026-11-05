@@ -50,6 +50,7 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       <div className="flex items-end justify-center gap-4">
         {order.map(({ team, pos, wonTiebreak }) => (
           <div key={team.id} className="flex w-56 flex-col items-center gap-2">
+            {team.icon && <span className="npl-pop text-7xl">{team.icon}</span>}
             <span className="font-display text-3xl font-semibold text-center">{team.name}</span>
             {wonTiebreak && <span className="rounded-full bg-rose-500 px-3 py-0.5 font-display text-lg">☠️ venceu no desempate</span>}
             <span className="font-display text-4xl font-bold">{team.score}</span>

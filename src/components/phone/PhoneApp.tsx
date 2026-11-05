@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { currentRound, finalRanking, roundDelta, teamById, tiebreakOf } from "@/lib/game";
+import { ICONS, teamLabel } from "@/lib/icons";
 import { getPlayerToken, getSavedNickname, saveNickname } from "@/lib/tokens";
 import type { Player, RoomState, Team } from "@/lib/types";
 import { PresenterApp } from "./PresenterApp";
@@ -105,7 +106,7 @@ function PlayerApp({ code, token }: { code: string; token: string }) {
     <div className="flex h-dvh flex-col overflow-hidden no-select">
       <header className="flex items-center gap-2 px-4 py-2 bg-black/20">
         <span className="font-display text-lg text-white/70">Sala {code}</span>
-        <span className="font-display text-lg font-semibold truncate">· {me.nickname}</span>
+        <span className="font-display text-lg font-semibold truncate">· {me.icon ? `${me.icon} ` : ""}{me.nickname}</span>
         <span className="ml-auto">{team && <TeamChip team={team} className="text-sm" />}</span>
         {!connected && <span className="h-2 w-2 rounded-full bg-amber-400" title="reconectando" />}
       </header>
@@ -189,6 +190,7 @@ function NameForm({ code, token, onJoined, removed }: { code: string; token: str
 function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; midGame?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [picking, setPicking] = useState<"me" | "team" | null>(null);
   const [name, setName] = useState("");
   const solo = state.room.settings.teamMode === "solo";
 
@@ -212,6 +214,23 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-4">
+      <button
+        onClick={() => setPicking(picking === "me" ? null : "me")}
+        className="flex items-center justify-center gap-3 rounded-2xl bg-white/10 px-4 py-3 font-display text-xl hover:bg-white/20"
+      >
+        <span className="text-4xl">{ctx.me.icon ?? "🙂"}</span>
+        <span>{ctx.me.nickname}</span>
+        <span className="text-sm text-white/60">trocar ícone</span>
+      </button>
+      {picking === "me" && (
+        <IconGrid
+          current={ctx.me.icon}
+          onPick={(icon) => {
+            setPicking(null);
+            api.setIcon(ctx.code, ctx.token, icon).catch((err) => setError(friendlyError(err)));
+          }}
+        />
+      )}
       {midGame ? (
         <p className="font-display text-2xl">A partida já começou! Escolha um time — você joga a partir da próxima música.</p>
       ) : solo ? (
@@ -231,7 +250,7 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
                 className={`rounded-2xl px-3 py-5 font-display text-xl font-semibold transition ${mine ? "ring-4 ring-white scale-105" : "opacity-85"}`}
                 style={{ background: t.color, color: textOn(t.color) }}
               >
-                {t.name}
+                {teamLabel(t)}
                 <span className="block text-sm font-normal opacity-80">{count} {count === 1 ? "jogador" : "jogadores"}</span>
               </button>
             );
@@ -241,12 +260,24 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
       {ctx.team && !midGame && (
         <>
           <div className="rounded-2xl p-4 font-display text-2xl" style={{ background: ctx.team.color, color: textOn(ctx.team.color) }}>
-            {ctx.team.name}
+            {teamLabel(ctx.team)}
             <p className="text-base opacity-80">
               {state.players.filter((p) => p.team_id === ctx.team!.id).map((p) => p.nickname).join(", ")}
             </p>
           </div>
           <Button variant="secondary" onClick={() => { setName(ctx.team!.name); setEditing(true); }}>✏️ Editar nome do time</Button>
+          <Button variant="secondary" onClick={() => setPicking(picking === "team" ? null : "team")}>
+            {ctx.team.icon ?? "🙂"} Trocar ícone do time
+          </Button>
+          {picking === "team" && (
+            <IconGrid
+              current={ctx.team.icon}
+              onPick={(icon) => {
+                setPicking(null);
+                api.setTeamIcon(ctx.code, ctx.token, ctx.team!.id, icon).catch((err) => setError(friendlyError(err)));
+              }}
+            />
+          )}
           <p className="text-white/60">Esperando a partida começar…</p>
         </>
       )}
@@ -266,7 +297,7 @@ function FinalPhone({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
       {mine && (
         <div className="npl-pop w-full max-w-sm rounded-3xl p-6" style={{ background: mine.team.color, color: textOn(mine.team.color) }}>
           <p className="font-display text-7xl font-bold">{mine.pos}º</p>
-          <p className="font-display text-2xl">{mine.team.name}</p>
+          <p className="font-display text-2xl">{teamLabel(mine.team)}</p>
           {mine.wonTiebreak && <p className="font-display text-lg opacity-80">🏆 venceu no desempate</p>}
           <p className="font-display text-3xl font-bold">{mine.team.score} pts</p>
           {(delta.get(mine.team.id) ?? 0) !== 0 && <p className="opacity-80">última rodada: {delta.get(mine.team.id)}</p>}
@@ -286,4 +317,21 @@ function FinalPhone({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
 
 function Screen({ children }: { children: React.ReactNode }) {
   return <main className="flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center">{children}</main>;
+}
+
+/** Grade de emojis para escolher o ícone. */
+function IconGrid({ current, onPick }: { current?: string | null; onPick: (icon: string) => void }) {
+  return (
+    <div className="npl-pop grid grid-cols-6 gap-1 rounded-2xl bg-black/30 p-2">
+      {ICONS.map((icon) => (
+        <button
+          key={icon}
+          onClick={() => onPick(icon)}
+          className={`aspect-square rounded-xl text-3xl transition active:scale-90 ${icon === current ? "bg-yellow-300" : "hover:bg-white/15"}`}
+        >
+          {icon}
+        </button>
+      ))}
+    </div>
+  );
 }

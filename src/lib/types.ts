@@ -86,12 +86,13 @@ export type Room = {
   last_activity_at: string;
 };
 
-export type Team = { id: string; room_id: string; idx: number; name: string; color: string; score: number };
+export type Team = { id: string; room_id: string; idx: number; name: string; color: string; score: number; icon?: string | null };
 
 export type Player = {
   id: string;
   room_id: string;
   nickname: string;
+  icon?: string | null; // emoji do jogador
   team_id: string | null;
   active_from_round: number;
   wants_rematch: boolean;

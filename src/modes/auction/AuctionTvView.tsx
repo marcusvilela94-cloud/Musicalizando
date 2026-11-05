@@ -6,6 +6,7 @@ import type { AuctionState, RoomState, Round } from "@/lib/types";
 import type { PresenterRoundViewProps, TvRoundViewProps } from "../types";
 import { auctionOf, entryPlayed, lastAction, listening, queueEntry } from "./logic";
 import { BidBoard, HintCard, QueueRow } from "./parts";
+import { teamLabel } from "@/lib/icons";
 
 const secsLeft = (iso: string | null | undefined, now: number) => (iso ? Math.max(0, Math.ceil((Date.parse(iso) - now) / 1000)) : null);
 
@@ -94,7 +95,7 @@ function ProvingTv({
     <div className="flex w-full flex-col items-center gap-5">
       <QueueRow state={state} a={a} />
       <div className="npl-pop flex w-full max-w-4xl flex-col items-center gap-3 rounded-[2.5rem] p-8 text-center" style={{ background: team.color, color: textOn(team.color) }}>
-        <p className="font-display text-8xl font-bold">{team.name}: {e.secs}s!</p>
+        <p className="font-display text-8xl font-bold">{teamLabel(team)}: {e.secs}s!</p>
         {round.status === "playing" && !played && (
           <p className="font-display text-4xl">{host ? "Aguardando o apresentador tocar…" : "Aperte ▶ Tocar"}</p>
         )}

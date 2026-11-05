@@ -9,6 +9,7 @@ import { isHostStyle } from "@/lib/game";
 import type { RoomState } from "@/lib/types";
 import { JoinPanel } from "./JoinPanel";
 import type { TvCtx } from "./TvApp";
+import { playerLabel } from "@/lib/icons";
 
 export function ConfigScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export function ConfigScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           <p className="font-display text-lg mb-2">Já entraram ({state.players.length})</p>
           <ul className="flex flex-wrap gap-2">
             {state.players.map((p) => (
-              <li key={p.id} className="rounded-full bg-white/15 px-3 py-1">{p.nickname}</li>
+              <li key={p.id} className="rounded-full bg-white/15 px-3 py-1">{playerLabel(p)}</li>
             ))}
           </ul>
         </Card>

@@ -44,6 +44,7 @@ export function TeamChip({ team, className = "", children }: { team: Team; class
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 font-display font-semibold ${className}`}
       style={{ background: team.color, color: textOn(team.color) }}
     >
+      {team.icon && <span aria-hidden>{team.icon}</span>}
       {children ?? team.name}
     </span>
   );
