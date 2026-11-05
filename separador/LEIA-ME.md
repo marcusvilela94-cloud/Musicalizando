@@ -22,7 +22,7 @@ Dê dois cliques em **`iniciar-separador.bat`** e deixe a janela aberta.
 - "Pausar fila" / "Limpar fila" (configuração do jogo, Instrumentos) ficam no banco: pausado, ele
   termina a música atual e não pega outra até "Continuar fila" (não precisa reiniciar o separador).
   Limpar tira só os pedidos que ainda não começaram; a música atual e o cache ficam.
-- Cache limitado a 200 MB (`CACHE_LIMITE_MB`): passou disso, apaga as usadas há mais tempo.
+- Cache limitado a 200 MB (`CACHE_LIMITE_MB`; o limite definido na página /biblioteca vale mais): passou disso, apaga as usadas há mais tempo — menos as fixadas. Se as fixadas ocuparem o limite inteiro, ele para de preparar até liberar espaço.
 - Faixa com volume abaixo de mistura − 16 dB (`LIMIAR_SILENCIO_DB`) é marcada "sem conteúdo"
   (ex.: guitarra em funk) e o jogo pula essa camada. Os níveis medidos aparecem no terminal.
 

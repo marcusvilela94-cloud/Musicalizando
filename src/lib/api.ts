@@ -116,14 +116,16 @@ export const api = {
         p_ids: ids,
         p_tracks: tracks
           .filter((t) => ids.includes(t.deezer_id))
-          .map(({ deezer_id, title, title_short, artist, artist_id, album, album_id, cover }) => ({
-            deezer_id, title, title_short, artist, artist_id, album, album_id, cover,
+          .map(({ deezer_id, title, title_short, artist, artist_id, album, album_id, cover, source }) => ({
+            deezer_id, title, title_short, artist, artist_id, album, album_id, cover, source,
           })),
       },
       false,
     ),
   /** Fontes recentes (as últimas 10 usadas para começar uma partida). */
   recentSources: () => call<MusicSource[]>("npl_recent_sources", {}, false),
+  /** Coleções da biblioteca (viram fontes): nome e quantas músicas. */
+  stemsCollections: () => call<{ id: string; name: string; songs: number }[]>("npl_stems_collections_list", {}, false),
   /** Começou a partida: as fontes da sala viram as mais recentes. */
   sourcesUsed: (code: string, owner: string) => call<void>("npl_sources_used", { p_code: code, p_owner_token: owner }, false),
   stemsSetPaused: (code: string, owner: string, paused: boolean) =>
@@ -282,7 +284,7 @@ export const deezer = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(65000),
+      signal: AbortSignal.timeout(290000),
     }),
   /** Leilão: gênero + ano original (busca no Deezer, feita no servidor). */
   meta: (id: number | string) => getJson<TrackMeta>(`/api/deezer/meta/${id}`, { signal: AbortSignal.timeout(12000) }),

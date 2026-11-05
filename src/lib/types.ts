@@ -5,7 +5,12 @@ export type MusicSource =
   | { type: "playlist"; id: string; label: string; picture?: string | null; nbTracks?: number }
   | { type: "artist"; id: string; label: string; picture?: string | null; level?: ArtistLevel }
   /** "Músicas já preparadas": todas as músicas do cache do modo Instrumentos */
-  | { type: "cache"; id: "stems"; label: string };
+  | { type: "cache"; id: "stems"; label: string }
+  /** Uma coleção da biblioteca (/biblioteca): só músicas do cache dos Instrumentos */
+  | { type: "collection"; id: string; label: string };
+
+/** De qual fonte a música veio (guardada quando entra na fila do separador). */
+export type SourceRef = { type: MusicSource["type"]; id: string; label: string };
 
 /** Popularidade das músicas de um artista: top 15 | top 50 (padrão) | catálogo inteiro. */
 export type ArtistLevel = "hits" | "known" | "fan";
@@ -82,6 +87,7 @@ export type PickedTrack = {
   stems?: StemsPlan; // Instrumentos: faixas separadas (cache) e camadas/instrumento
   album_id?: number | null; // usado só para montar as perguntas
   artist_id?: number | null;
+  source?: SourceRef; // de qual fonte da sala a música veio
 };
 
 /** Tipos de pergunta do quiz. */
@@ -145,10 +151,14 @@ export type StemsStatus = {
   ready: { deezer_id: number; key: string; audible: Partial<Record<StemName, boolean>> }[];
   queue: Partial<Record<"pending" | "processing" | "error", number>>;
   errors: { deezer_id: number; error: string | null }[];
-  cache: { songs: number; bytes: number };
+  cache: { songs: number; bytes: number; pinned_bytes?: number; limit_bytes?: number };
+  /** entre as pedidas, as bloqueadas na biblioteca (nunca ficam prontas) */
+  blocked?: number[];
   /** a fila inteira (todas as salas): pausa, pendentes e tempo médio por música */
   global?: {
     paused: boolean;
+    /** as fixadas ocupam o limite: o separador não prepara novas */
+    full?: boolean;
     pending: number;
     processing: number;
     current_started_at: string | null;
@@ -345,4 +355,27 @@ export type RoomState = {
   players: Player[];
   rounds: Round[];
   attempts: Attempt[];
+};
+
+/** Biblioteca (/biblioteca): uma música do cache dos Instrumentos. */
+export type LibrarySong = {
+  deezer_id: number;
+  key: string;
+  paths: Partial<Record<StemName, string>>;
+  bytes: number;
+  audible: Partial<Record<StemName, boolean>>;
+  meta: { title: string; title_short?: string; artist: string; album?: string; cover?: string; duration?: number } | null;
+  source: SourceRef | null;
+  pinned: boolean;
+  created_at: string;
+  last_used_at: string;
+  collections: string[];
+};
+export type LibraryCollection = { id: string; name: string; songs: number };
+export type LibraryData = {
+  songs: LibrarySong[];
+  collections: LibraryCollection[];
+  blocked: { deezer_id: number; meta: LibrarySong["meta"]; source: SourceRef | null; blocked_at: string }[];
+  usage: { songs: number; bytes: number; pinned: number; pinned_bytes: number; limit_bytes: number; limit_mb: number | null; full: boolean };
+  trash: number;
 };

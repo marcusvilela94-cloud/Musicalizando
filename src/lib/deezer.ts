@@ -4,7 +4,7 @@ import "server-only";
 import { versesFor } from "./lyrics";
 import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
 import { supabaseServer } from "./supabaseServer";
-import type { ArtistLevel, MusicSource, PickedTrack, TrackMeta } from "./types";
+import type { ArtistLevel, MusicSource, PickedTrack, SourceRef, TrackMeta } from "./types";
 
 const API = "https://api.deezer.com";
 
@@ -340,8 +340,9 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function toPicked(t: DzTrack): PickedTrack {
+function toPicked(t: DzTrack, source?: SourceRef): PickedTrack {
   return {
+    ...(source ? { source } : {}),
     deezer_id: t.id,
     title: t.title,
     title_short: t.title_short ?? t.title,
@@ -373,11 +374,33 @@ const CACHE_META_LOOKUPS = 60;
  * Os dados vêm do banco; as que ainda não têm são buscadas no Deezer e
  * gravadas (npl_stems_fill_meta), para não consultar de novo.
  */
-async function getCachedTracks(): Promise<DzTrack[]> {
+async function getCachedTracks(collection?: string): Promise<DzTrack[]> {
   const sb = supabaseServer();
-  const { data, error } = await sb.rpc("npl_stems_cached");
+  const { data, error } = await sb.rpc("npl_stems_cached", collection ? { p_collection: collection } : {});
   if (error) throw new Error(`cache dos instrumentos: ${error.message}`);
   const rows = ((data ?? []) as { deezer_id: number; meta: CachedMeta | null }[]).map((r) => ({ ...r, deezer_id: Number(r.deezer_id) }));
+  await completeCacheMeta(rows);
+  return rows
+    .filter((r): r is { deezer_id: number; meta: CachedMeta } => !!r.meta)
+    .map((r) => ({
+      id: r.deezer_id,
+      readable: true,
+      title: r.meta.title,
+      title_short: r.meta.title_short ?? r.meta.title,
+      duration: r.meta.duration,
+      preview: "cache", // o jogo busca a prévia atualizada na hora de tocar
+      artist: { id: r.meta.artist_id ?? 0, name: r.meta.artist },
+      album: { id: r.meta.album_id, title: r.meta.album, cover_big: r.meta.cover },
+    }));
+}
+
+/**
+ * Músicas do cache sem dados (pedidas antes da 022): busca no Deezer (no
+ * máximo CACHE_META_LOOKUPS por vez), completa as linhas e grava no banco.
+ * Usado pela fonte do cache e pela biblioteca.
+ */
+export async function completeCacheMeta(rows: { deezer_id: number; meta: CachedMeta | null }[]) {
+  const sb = supabaseServer();
   const missing = rows.filter((r) => !r.meta).slice(0, CACHE_META_LOOKUPS);
   if (missing.length) {
     const found: (PickedTrack & { duration?: number })[] = [];
@@ -402,22 +425,14 @@ async function getCachedTracks(): Promise<DzTrack[]> {
     }
     if (found.length) await sb.rpc("npl_stems_fill_meta", { p_tracks: found });
   }
-  return rows
-    .filter((r): r is { deezer_id: number; meta: CachedMeta } => !!r.meta)
-    .map((r) => ({
-      id: r.deezer_id,
-      readable: true,
-      title: r.meta.title,
-      title_short: r.meta.title_short ?? r.meta.title,
-      duration: r.meta.duration,
-      preview: "cache", // o jogo busca a prévia atualizada na hora de tocar
-      artist: { id: r.meta.artist_id ?? 0, name: r.meta.artist },
-      album: { id: r.meta.album_id, title: r.meta.album, cover_big: r.meta.cover },
-    }));
 }
 
 async function loadSource(src: MusicSource): Promise<SourcePool> {
   if (src.type === "cache") return { tracks: await getCachedTracks(), head: Infinity };
+  if (src.type === "collection") {
+    if (!/^[0-9a-f-]{36}$/i.test(src.id)) throw new Error("Coleção inválida");
+    return { tracks: await getCachedTracks(src.id), head: Infinity };
+  }
   if (src.type === "preset") {
     const preset = PRESETS[src.id];
     if (!preset) throw new Error(`Playlist pronta desconhecida: ${src.id}`);
@@ -443,25 +458,44 @@ async function loadSource(src: MusicSource): Promise<SourcePool> {
  * as outras (count - lyricsNeed); depois disso, só entram músicas com letra.
  */
 /** Limite de músicas consultadas na LRCLIB por lista (para não demorar demais). */
-const MAX_LYRICS_LOOKUPS = 120;
+const MAX_LYRICS_LOOKUPS = 220;
+/** Consultas de letra em paralelo (a LRCLIB é gratuita: sem exagero). */
+const LYRICS_PARALLEL = 12;
+
+/** Promise.all com no máximo n ao mesmo tempo. */
+async function mapLimit<T, R>(items: T[], n: number, fn: (x: T, i: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i], i);
+      }
+    }),
+  );
+  return out;
+}
 
 export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true, lyricsNeed = 0) {
   const need = Math.max(0, Math.min(count, Math.floor(lyricsNeed)));
   const warnings: string[] = [];
   const pools: DzTrack[][] = [];
+  const poolSource: SourceRef[] = [];
   const results = await Promise.allSettled(sources.map(loadSource));
   results.forEach((r, i) => {
     if (r.status === "fulfilled") {
       // filtros primeiro; depois sorteia entre as "head" primeiras e deixa o resto (em ordem) para completar
       const ok = r.value.tracks.filter((t) => t.preview && t.readable !== false && !(versionFilter && isOtherVersion(t)));
       pools.push([...shuffle(ok.slice(0, r.value.head)), ...ok.slice(r.value.head)]);
+      poolSource.push({ type: sources[i].type, id: String(sources[i].id), label: String(sources[i].label ?? "").slice(0, 200) });
     } else warnings.push(`Não consegui carregar "${sources[i].label}": ${(r.reason as Error).message}`);
   });
 
   // rodízio entre as fontes (ordem das fontes sorteada a cada volta), sem repetidas
   const seenIds = new Set<number>();
   const seenKeys = new Set<string>();
-  function* candidates() {
+  function* candidates(): Generator<{ t: DzTrack; src: SourceRef }> {
     const cursors = pools.map(() => 0);
     for (;;) {
       let any = false;
@@ -474,7 +508,7 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
           seenIds.add(t.id);
           seenKeys.add(key);
           any = true;
-          yield t;
+          yield { t, src: poolSource[i] };
           break;
         }
       }
@@ -487,30 +521,30 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
   const gen = candidates();
   let lookups = 0;
   let without = 0; // aceitas sem letra
+  const srcOf = new Map<number, SourceRef>();
   while (picked.length < count && lookups < MAX_LYRICS_LOOKUPS) {
     const batch: DzTrack[] = [];
     while (batch.length < count - picked.length) {
       const n = gen.next();
       if (n.done) break;
-      batch.push(n.value);
+      batch.push(n.value.t);
+      srcOf.set(n.value.t.id, n.value.src);
     }
     if (!batch.length) break;
     const keep = versionFilter
       ? await Promise.all(batch.map(async (t) => (await getAlbum(t.album?.id))?.record_type !== "compile"))
       : batch.map(() => true);
-    const verses = await Promise.all(
-      batch.map((t, i) => {
-        if (need === 0 || !keep[i]) return null;
-        lookups++;
-        return versesFor({ title: t.title, titleShort: t.title_short ?? t.title, artist: t.artist?.name ?? "", duration: t.duration }).catch(() => null);
-      }),
-    );
+    const verses = await mapLimit(batch, LYRICS_PARALLEL, async (t, i) => {
+      if (need === 0 || !keep[i]) return null;
+      lookups++;
+      return versesFor({ title: t.title, titleShort: t.title_short ?? t.title, artist: t.artist?.name ?? "", duration: t.duration }).catch(() => null);
+    });
     batch.forEach((t, i) => {
       if (!keep[i] || picked.length >= count) return;
-      if (verses[i]) picked.push({ ...toPicked(t), lyrics: verses[i]! });
+      if (verses[i]) picked.push({ ...toPicked(t, srcOf.get(t.id)), lyrics: verses[i]! });
       else if (without < count - need) {
         without++;
-        picked.push(toPicked(t));
+        picked.push(toPicked(t, srcOf.get(t.id)));
       }
     });
   }

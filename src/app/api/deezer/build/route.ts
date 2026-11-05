@@ -6,7 +6,7 @@ import type { MusicSource } from "@/lib/types";
 // lyrics: quantas músicas COM letra são necessárias (rodadas de "Só pela letra"); 0 = não busca letra.
 
 // buscar letras pode levar alguns segundos
-export const maxDuration = 60;
+export const maxDuration = 300;
 export async function POST(request: Request) {
   let body: { sources?: MusicSource[]; count?: number; versionFilter?: boolean; lyrics?: number };
   try {
@@ -15,9 +15,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "JSON inválido" }, { status: 400 });
   }
   const sources = (Array.isArray(body.sources) ? body.sources : [])
-    .filter((s) => s && ["preset", "playlist", "artist", "cache"].includes(s.type) && /^[\w-]+$/.test(String(s.id)))
+    .filter((s) => s && ["preset", "playlist", "artist", "cache", "collection"].includes(s.type) && /^[\w-]+$/.test(String(s.id)))
     .slice(0, 12);
-  const count = Math.min(60, Math.max(5, Number(body.count) || 10));
+  const count = Math.min(160, Math.max(5, Number(body.count) || 10));
   if (sources.length === 0) return Response.json({ error: "Escolha pelo menos uma fonte de músicas" }, { status: 400 });
   try {
     const result = await buildTrackList(sources, count, body.versionFilter !== false, Math.max(0, Math.min(count, Number(body.lyrics) || 0)));

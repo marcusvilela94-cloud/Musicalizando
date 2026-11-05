@@ -1375,6 +1375,105 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     await db.exec("set role anon");
     await fails(db.query("select * from public.npl_recent_sources"), "permission denied");
     await db.exec("reset role");
+
+    // ---------- biblioteca: origem, fixadas, limite, bloqueio, coleções ----------
+    const MB = 1048576;
+    const all4 = { drums: true, bass: true, guitar: true, vocals: true };
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue; delete from npl_stems_blocked; update npl_stems_worker set limit_mb = null, info = '{}'");
+    await rpc("npl_stems_request", sc0, OWNER, [701, 702, 703], [
+      { deezer_id: 701, title: "A", artist: "X", source: { type: "playlist", id: "p9", label: "Rock BR", picture: "https://x" } },
+      { deezer_id: 702, title: "B", artist: "X", source: { type: "hack", id: "?" } },
+    ]);
+    for (const id of [701, 702, 703]) {
+      await rpc("npl_stems_claim");
+      await rpc("npl_stems_done", id, `key-${id}`, paths(`key-${id}`), 60 * MB, all4, {});
+    }
+    let lib = await rpc("npl_lib_list");
+    assert.equal(lib.songs.length, 3);
+    assert.deepEqual(lib.songs.find((s) => s.deezer_id === 701).source, { type: "playlist", id: "p9", label: "Rock BR" }, "origem guardada");
+    assert.equal(lib.songs.find((s) => s.deezer_id === 702).source, null, "origem inválida fica de fora");
+    assert.equal(lib.usage.limit_bytes, 200 * MB, "padrão 200 MB");
+    // anon não chama a biblioteca
+    await db.exec("set role anon");
+    await fails(db.query("select public.npl_lib_list()"), "permission denied");
+    await fails(db.query("select public.npl_lib_remove('{701}'::bigint[], true)"), "permission denied");
+    await fails(db.query("select public.npl_lib_set_limit(500)"), "permission denied");
+    await db.exec("reset role");
+    // fixadas: a limpeza não apaga
+    await db.query("update npl_stems_cache set last_used_at = now() - (deezer_id - 700) * interval '1 day'");
+    assert.equal(await rpc("npl_lib_pin", [703], true), 1);
+    let ev = await rpc("npl_lib_set_limit", 130);
+    assert.equal(ev.limit_mb, 130);
+    assert.deepEqual(ev.evicted.map((g) => g.deezer_id), [702], "tira a não fixada mais antiga (703 é fixada)");
+    assert.equal((await rpc("npl_stems_evict", 999 * MB)).length, 0, "o limite da biblioteca vale mais que o do separador");
+    assert.equal((await rpc("npl_lib_set_limit", 9999)).limit_mb, 500, "máximo 500 MB");
+    // só fixadas no limite: não prepara mais
+    await rpc("npl_lib_pin", [701], true);
+    assert.deepEqual((await rpc("npl_lib_set_limit", 100)).evicted, [], "fixadas não saem");
+    let st2 = await rpc("npl_stems_status", []);
+    assert.equal(st2.global.full, true, "fixadas ocupam o limite");
+    assert.equal(st2.cache.pinned_bytes, 120 * MB);
+    await rpc("npl_stems_request", sc0, OWNER, [704]);
+    assert.equal(await rpc("npl_stems_claim"), null, "cheio de fixadas: não entrega");
+    await rpc("npl_lib_pin", [701], false);
+    assert.equal((await rpc("npl_stems_status", [])).global.full, true, "60 fixados + uma música média (60) não cabem em 100");
+    await rpc("npl_lib_set_limit", 200);
+    assert.equal((await rpc("npl_stems_status", [])).global.full, false);
+    // bloquear: some do cache e da fila, não volta a ser pedida, separação no meio vai para o lixo
+    assert.equal((await rpc("npl_stems_claim")).deezer_id, 704);
+    let rm = await rpc("npl_lib_remove", [701, 704], true);
+    assert.equal(rm.removed, 1);
+    assert.deepEqual(rm.paths.sort(), Object.values(paths("key-701")).sort(), "arquivos para apagar");
+    assert.equal(await rpc("npl_stems_request", sc0, OWNER, [701, 704]), 0, "bloqueadas não entram na fila");
+    await rpc("npl_stems_done", 704, "key-704", paths("key-704"), MB, all4, {});
+    assert.equal((await rpc("npl_stems_status", [704])).ready.length, 0, "terminou depois de bloqueada: não entra no cache");
+    assert.deepEqual((await rpc("npl_stems_status", [701, 704, 703])).blocked.sort(), [701, 704]);
+    assert.equal((await rpc("npl_lib_trash_take")).length, 4);
+    assert.deepEqual(await rpc("npl_lib_trash_take"), []);
+    lib = await rpc("npl_lib_list");
+    assert.deepEqual(lib.blocked.map((b) => b.deezer_id).sort(), [701, 704]);
+    assert.equal(lib.blocked.find((b) => b.deezer_id === 701).meta.title, "A", "guarda os dados da bloqueada");
+    assert.equal(await rpc("npl_lib_unblock", [701]), 1);
+    assert.equal(await rpc("npl_stems_request", sc0, OWNER, [701]), 1, "desbloqueada: pode preparar de novo");
+    // remover sem bloquear
+    assert.equal((await rpc("npl_lib_remove", [703], false)).removed, 1);
+    // coleções
+    await rpc("npl_stems_claim");
+    await rpc("npl_stems_done", 701, "key-701b", paths("key-701b"), MB, all4, {});
+    const rock = await rpc("npl_lib_collection_save", null, "  Rock   BR ");
+    assert.equal(rock.name, "Rock BR");
+    await fails(rpc("npl_lib_collection_save", null, "rock br"), "npl:collection_exists");
+    await fails(rpc("npl_lib_collection_save", null, "  "), "npl:collection_name");
+    const chur = await rpc("npl_lib_collection_save", null, "Churrasco");
+    assert.equal((await rpc("npl_lib_collection_save", chur.id, "Churras")).name, "Churras");
+    assert.equal(await rpc("npl_lib_collection_set", rock.id, [701, 999], true), 1, "só músicas do cache");
+    await rpc("npl_lib_collection_set", chur.id, [701], true);
+    assert.deepEqual((await rpc("npl_stems_cached", rock.id)).map((x) => x.deezer_id), [701]);
+    assert.equal((await rpc("npl_stems_cached")).length, 1, "sem coleção: todas");
+    let cols = await rpc("npl_stems_collections_list");
+    assert.deepEqual(cols.map((c) => [c.name, c.songs]), [["Churras", 1], ["Rock BR", 1]]);
+    assert.equal((await rpc("npl_lib_list")).songs[0].collections.length, 2, "uma música em várias coleções");
+    assert.equal(await rpc("npl_lib_collection_set", chur.id, [701], false), 1);
+    assert.equal(await rpc("npl_lib_collection_delete", rock.id), true);
+    await rpc("npl_lib_remove", [701], false);
+    cols = await rpc("npl_stems_collections_list");
+    assert.deepEqual(cols.map((c) => [c.name, c.songs]), [["Churras", 0]], "removida do cache sai das coleções");
+    // coleção como fonte da sala (e nas recentes)
+    await rpc("npl_update_settings", sc0, OWNER, { sources: [{ type: "collection", id: chur.id, label: "Churras" }] });
+    await rpc("npl_sources_used", sc0, OWNER);
+    assert.equal((await rpc("npl_recent_sources"))[0].type, "collection");
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue; delete from npl_stems_blocked; delete from npl_stems_collections; update npl_stems_worker set limit_mb = null");
+
+    // partidas maiores: até 100 músicas
+    await rpc("npl_update_settings", sc0, OWNER, { rounds: 100 });
+    assert.equal((await rpc("npl_get_state", sc0)).room.settings.rounds, 100);
+    await rpc("npl_update_settings", sc0, OWNER, { rounds: 500 });
+    assert.equal((await rpc("npl_get_state", sc0)).room.settings.rounds, 100, "máximo 100");
+    const many = Array.from({ length: 110 }, (_, i) => ({ deezer_id: 5000 + i, title: `M${i}`, title_short: `M${i}`, artist: "A", artists: ["A"], cover: "x", album: "B" }));
+    const big = await rpc("npl_start_match", sc0, OWNER, many, 100);
+    assert.equal(big.total_rounds, 100, "100 rodadas");
+    assert.equal(big.reserve, 10, "reservas além das 100");
+    await rpc("npl_finish_match", sc0, OWNER);
   }
 
   // ---------- Instrumentos: partida ----------

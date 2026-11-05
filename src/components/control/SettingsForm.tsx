@@ -1,9 +1,10 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
+import { OBRA_PACKS, obraPacksOf, pickObraTracks } from "@/lib/obra";
 import type { ArtistLevel, ModeId, MusicSource, ObraPackId, PickedTrack, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
 import { STEM_EMOJI, STEM_LABEL, STEM_ORDER, fmtDuration, stemsEta } from "@/modes/stems/logic";
 import { getMode } from "@/modes";
@@ -136,6 +137,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     update({ sources: [...settings.sources, src] });
   };
   const cacheSongs = useCacheSongs();
+  const collections = useCollections();
   const removeSource = (src: MusicSource) => update({ sources: settings.sources.filter((s) => !sameSource(s, src)) });
   const setLevel = (src: MusicSource, level: ArtistLevel) =>
     update({ sources: settings.sources.map((s) => (sameSource(s, src) && s.type === "artist" ? { ...s, level } : s)) });
@@ -279,7 +281,11 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
                 // eslint-disable-next-line @next/next/no-img-element -- foto do Deezer
                 <img src={s.picture} alt="" className="h-7 w-7 rounded-full" />
               )}
-              {s.type === "cache" ? `🥁 ${s.label}${cacheSongs !== null ? ` (${cacheSongs})` : ""}` : s.label}
+              {s.type === "cache"
+                ? `🥁 ${s.label}${cacheSongs !== null ? ` (${cacheSongs})` : ""}`
+                : s.type === "collection"
+                  ? `📚 ${collections?.find((c) => c.id === s.id)?.name ?? s.label}${collections ? ` (${collections.find((c) => c.id === s.id)?.songs ?? 0})` : ""}`
+                  : s.label}
               {s.type === "artist" && (
                 <select
                   value={s.level ?? "known"}
@@ -309,6 +315,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
           stemsOn={on.includes("stems")}
           versionFilter={settings.versionFilter !== false}
           cacheSongs={cacheSongs}
+          collections={collections}
         />
         <div className="grid gap-4 md:grid-cols-3">
           <div className="flex flex-col gap-2">
@@ -328,6 +335,22 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
                 + 🥁 Músicas já preparadas ({cacheSongs})
               </Button>
             )}
+            {(collections ?? [])
+              .filter((c) => c.songs > 0)
+              .map((c) => {
+                const src: MusicSource = { type: "collection", id: c.id, label: c.name };
+                return (
+                  <Button
+                    key={c.id}
+                    variant="secondary"
+                    onClick={() => addSource(src)}
+                    disabled={settings.sources.some((s) => sameSource(s, src))}
+                    title="Coleção da biblioteca (músicas já preparadas); vale para qualquer modo"
+                  >
+                    + 📚 {c.name} ({c.songs})
+                  </Button>
+                );
+              })}
           </div>
           <PlaylistLinkInput onAdd={addSource} />
           <ArtistSearch onAdd={addSource} />
@@ -340,7 +363,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
           <input
             type="range"
             min={5}
-            max={30}
+            max={100}
+            step={5}
             value={settings.rounds}
             onChange={(e) => setSettings((s) => ({ ...s, rounds: Number(e.target.value) }))}
             onPointerUp={(e) => update({ rounds: Number((e.target as HTMLInputElement).value) })}
@@ -352,6 +376,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
               Um time por vez: {settings.rounds} → {roundsAdj} músicas para {teamsNow} {settings.teamMode === "solo" ? "jogadores" : "times"} (todos jogam o mesmo número de rodadas).
             </p>
           )}
+          <AvailableNotice settings={settings} on={on} want={roundsAdj} teams={turns ? teamsNow : 1} />
         </Card>
         <Card className="flex flex-col gap-3">
           <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -513,8 +538,7 @@ function StemsPanel({
     let alive = true;
     const [sources, versionFilter] = JSON.parse(srcKey) as [MusicSource[], boolean];
     const t = setTimeout(() => {
-      deezer
-        .pool(sources, versionFilter)
+      poolOf(sources, versionFilter)
         .then((r) => {
           if (!alive) return;
           setPool({ key: srcKey, ids: r.tracks.map((x) => x.deezer_id), tracks: r.tracks });
@@ -553,6 +577,8 @@ function StemsPanel({
   const total = ids?.length ?? 0;
   const current = workerOn && typeof status?.worker?.info?.current === "string" ? (status.worker.info.current as string) : null;
   const mb = (status?.cache.bytes ?? 0) / 1048576;
+  const limitMb = (status?.cache.limit_bytes ?? 200 * 1048576) / 1048576;
+  const full = !!status?.global?.full;
   const g = status?.global;
   const paused = !!g?.paused;
   const queued = (g?.pending ?? 0) + (g?.processing ?? 0);
@@ -690,9 +716,16 @@ function StemsPanel({
                 ))}
             </p>
           )}
+          {full && (
+            <p className="rounded-xl bg-rose-500/20 px-3 py-2 text-sm text-rose-100">
+              📌 As músicas fixadas ocupam o limite do cache: o separador não prepara novas até liberar espaço na{" "}
+              <Link href="/biblioteca" target="_blank" className="underline">biblioteca</Link>.
+            </p>
+          )}
           <p className="text-xs text-white/50">
-            Cache: {status?.cache.songs ?? 0} músicas · {mb.toFixed(0)} de 200 MB (as usadas há mais tempo saem quando enche).
-            {!workerOn && pending > 0 && " Os pedidos ficam guardados até o separador ligar."}
+            Cache: {status?.cache.songs ?? 0} músicas · {mb.toFixed(0)} de {limitMb.toFixed(0)} MB (as usadas há mais tempo saem quando enche; as fixadas ficam).
+            {!workerOn && pending > 0 && " Os pedidos ficam guardados até o separador ligar."}{" "}
+            <Link href="/biblioteca" target="_blank" className="text-white/60 underline hover:text-white">📚 Biblioteca</Link>
           </p>
         </>
       )}
@@ -703,8 +736,8 @@ function StemsPanel({
 /** Fonte com todas as músicas já separadas pelo separador (aparece com 5 ou mais no cache). */
 const CACHE_SOURCE: MusicSource = { type: "cache", id: "stems", label: "Músicas já preparadas" };
 const CACHE_SOURCE_MIN = 5;
-const SOURCE_KIND: Record<MusicSource["type"], string> = { artist: "Artista", preset: "Pronta", playlist: "Playlist", cache: "Preparadas" };
-const SOURCE_EMOJI: Record<MusicSource["type"], string> = { artist: "🎤", preset: "🔥", playlist: "🎶", cache: "🥁" };
+const SOURCE_KIND: Record<MusicSource["type"], string> = { artist: "Artista", preset: "Pronta", playlist: "Playlist", cache: "Preparadas", collection: "Coleção" };
+const SOURCE_EMOJI: Record<MusicSource["type"], string> = { artist: "🎤", preset: "🔥", playlist: "🎶", cache: "🥁", collection: "📚" };
 const sourceKey = (s: MusicSource) => `${s.type}:${s.id}`;
 
 /** Quantas músicas há no cache dos Instrumentos (atualiza a cada 30 s). */
@@ -727,13 +760,102 @@ function useCacheSongs() {
   return n;
 }
 
+/** Coleções da biblioteca (viram fontes). Atualiza a cada 30 s. */
+type Collection = { id: string; name: string; songs: number };
+function useCollections() {
+  const [list, setList] = useState<Collection[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const tick = () =>
+      api
+        .stemsCollections()
+        .then((r) => alive && setList(r ?? []))
+        .catch(() => {});
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  return list;
+}
+
+/** Músicas das fontes (até 150), guardadas por 1 minuto na aba (a configuração consulta em vários lugares). */
+const POOL_MAX = 150;
+const poolCache = new Map<string, { at: number; p: ReturnType<typeof deezer.pool> }>();
+function poolOf(sources: MusicSource[], versionFilter: boolean) {
+  const k = JSON.stringify([sources.map((s) => [s.type, s.id, s.type === "artist" ? (s.level ?? "known") : null]), versionFilter]);
+  const hit = poolCache.get(k);
+  if (hit && Date.now() - hit.at < 60000) return hit.p;
+  const p = deezer.pool(sources, versionFilter);
+  p.catch(() => poolCache.delete(k));
+  poolCache.set(k, { at: Date.now(), p });
+  if (poolCache.size > 30) poolCache.delete(poolCache.keys().next().value!);
+  return p;
+}
+
+/**
+ * Aviso "Suas fontes têm 34 músicas disponíveis": confere quantas músicas
+ * válidas as fontes têm (com o filtro de versões; no Instrumentos sozinho, só
+ * as prontas; no "Qual é a obra?" sozinho, as obras dos pacotes). A partida usa
+ * o máximo possível (com "Um time por vez", num múltiplo do número de times).
+ */
+function AvailableNotice({ settings, on, want, teams }: { settings: RoomSettings; on: ModeId[]; want: number; teams: number }) {
+  const fromSources = on.filter((m) => m !== "obra");
+  const stemsOnly = fromSources.length === 1 && fromSources[0] === "stems";
+  const lyricsOnly = fromSources.length > 0 && fromSources.every((m) => m === "lyrics" || m === "continue");
+  const packsKey = obraPacksOf(settings).join(",");
+  const [obraCount, setObraCount] = useState(0);
+  const withObra = on.includes("obra");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- conta as obras dos pacotes ligados
+    setObraCount(withObra ? pickObraTracks(packsKey.split(",") as ObraPackId[], 100000).length : 0);
+  }, [withObra, packsKey]);
+  const key = JSON.stringify([settings.sources, settings.versionFilter !== false, stemsOnly, fromSources.length > 0]);
+  const [res, setRes] = useState<{ key: string; n: number; capped: boolean } | null>(null);
+  useEffect(() => {
+    const [sources, vf, onlyStems, need] = JSON.parse(key) as [MusicSource[], boolean, boolean, boolean];
+    if (!need) return;
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const { tracks } = await poolOf(sources, vf);
+        let n = tracks.length;
+        if (onlyStems) n = (await api.stemsStatus(tracks.map((x) => x.deezer_id))).ready.length;
+        if (alive) setRes({ key, n, capped: !onlyStems && tracks.length >= POOL_MAX });
+      } catch {
+        if (alive) setRes(null);
+      }
+    }, 600);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [key]);
+  const base = fromSources.length ? (res?.key === key ? res : null) : { n: 0, capped: false };
+  if (!base || base.capped) return null;
+  const avail = base.n + obraCount;
+  if (avail >= want) return null;
+  const eff = teams > 1 ? Math.floor(avail / teams) * teams || avail : avail;
+  return (
+    <p className="rounded-xl bg-rose-500/20 px-3 py-2 text-sm text-rose-100">
+      ⚠️ Suas fontes têm {avail} música{avail === 1 ? "" : "s"} disponíve{avail === 1 ? "l" : "is"}
+      {stemsOnly ? " com instrumentos prontos" : ""}: a partida terá {eff} música{eff === 1 ? "" : "s"}
+      {eff !== avail ? ` (múltiplo de ${teams} para todos jogarem o mesmo tanto)` : ""}.
+      {lyricsOnly && " As letras são conferidas ao começar (podem ser menos)."}
+      {avail === 0 && " Adicione mais fontes."}
+    </p>
+  );
+}
+
 /** Músicas de cada fonte (para "48 de 50 prontas"): uma consulta por fonte e filtro, guardada na aba. */
 const sourceIds = new Map<string, Promise<number[]>>();
 function idsOf(s: MusicSource, versionFilter: boolean) {
   const k = JSON.stringify([s.type, s.id, s.type === "artist" ? (s.level ?? "known") : null, versionFilter]);
   let p = sourceIds.get(k);
   if (!p) {
-    p = deezer.pool([s], versionFilter).then((r) => r.tracks.map((t) => t.deezer_id));
+    p = poolOf([s], versionFilter).then((r) => r.tracks.map((t) => t.deezer_id));
     p.catch(() => sourceIds.delete(k)); // erro: tenta de novo na próxima vez
     sourceIds.set(k, p);
   }
@@ -750,12 +872,14 @@ function RecentSources({
   stemsOn,
   versionFilter,
   cacheSongs,
+  collections,
 }: {
   selected: MusicSource[];
   onAdd: (s: MusicSource) => void;
   stemsOn: boolean;
   versionFilter: boolean;
   cacheSongs: number | null;
+  collections: Collection[] | null;
 }) {
   const [recent, setRecent] = useState<MusicSource[] | null>(null);
   const [ready, setReady] = useState<Record<string, { ready: number; total: number } | "error">>({});
@@ -772,7 +896,12 @@ function RecentSources({
   }, []);
 
   // a fonte do cache só aparece com músicas suficientes
-  const list = (recent ?? []).filter((s) => s.type !== "cache" || (cacheSongs ?? 0) >= CACHE_SOURCE_MIN);
+  // e as coleções só enquanto existirem (com músicas)
+  const list = (recent ?? []).filter(
+    (s) =>
+      (s.type !== "cache" || (cacheSongs ?? 0) >= CACHE_SOURCE_MIN) &&
+      (s.type !== "collection" || (collections ?? []).some((c) => c.id === s.id && c.songs > 0)),
+  );
   const listKey = JSON.stringify(list);
 
   // Instrumentos: prontas de cada atalho (uma fonte por vez; a cada 30 s confere de novo o cache)
@@ -783,7 +912,7 @@ function RecentSources({
     const run = async () => {
       for (const s of items) {
         if (!alive) return;
-        if (s.type === "cache") continue;
+        if (s.type === "cache" || s.type === "collection") continue;
         try {
           const ids = await idsOf(s, versionFilter);
           const st = await api.stemsStatus(ids);
@@ -809,7 +938,15 @@ function RecentSources({
         {list.map((s) => {
           const on = selected.some((x) => sameSource(x, s));
           const pic = s.type === "artist" || s.type === "playlist" ? s.picture : null;
-          const r = s.type === "cache" ? (cacheSongs !== null ? { ready: cacheSongs, total: cacheSongs } : undefined) : ready[sourceKey(s)];
+          const col = s.type === "collection" ? collections?.find((c) => c.id === s.id) : undefined;
+          const r =
+            s.type === "cache"
+              ? cacheSongs !== null
+                ? { ready: cacheSongs, total: cacheSongs }
+                : undefined
+              : col
+                ? { ready: col.songs, total: col.songs }
+                : ready[sourceKey(s)];
           return (
             <button
               key={sourceKey(s)}

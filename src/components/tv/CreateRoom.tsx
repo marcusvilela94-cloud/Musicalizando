@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/ui";
@@ -66,6 +67,9 @@ export function CreateRoom() {
         ))}
       </div>
       {error && <p className="text-rose-300 text-lg">{error}</p>}
+      <Link href="/biblioteca" className="text-sm text-white/35 transition hover:text-white/70">
+        📚 Biblioteca de músicas preparadas
+      </Link>
     </main>
   );
 }

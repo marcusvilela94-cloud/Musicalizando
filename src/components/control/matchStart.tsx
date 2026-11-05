@@ -20,7 +20,7 @@ type Short = {
   have: number;
   want: number;
   /** Instrumentos: por que não dá para preparar agora ("running" = dá: "Esperar preparar") */
-  queue?: "off" | "paused" | "running";
+  queue?: "off" | "paused" | "full" | "running";
   /** Instrumentos: estimativa para a fila andar (segundos) */
   etaSeconds?: number;
 };
@@ -143,6 +143,7 @@ async function prepareMatch(
   let stemsCandidates: PickedTrack[] = [];
   let workerOn = false;
   let queuePaused = false;
+  let queueFull = false;
   let stemsEtaS: number | undefined;
   if (wantS) {
     onProgress({ label: "Conferindo os instrumentos prontos…", done: 0, total: 0 });
@@ -150,6 +151,8 @@ async function prepareMatch(
     const st = await api.stemsStatus(srcPool.map((t) => t.deezer_id)).catch(() => null);
     workerOn = !!st?.worker?.alive;
     queuePaused = !!st?.global?.paused;
+    queueFull = !!st?.global?.full;
+    const blocked = new Set(st?.blocked ?? []);
     stemsEtaS = stemsEta(st?.global)?.seconds;
     const readyMap = new Map((st?.ready ?? []).map((r) => [r.deezer_id, r]));
     const mixed = [...srcPool].sort(() => Math.random() - 0.5);
@@ -157,12 +160,12 @@ async function prepareMatch(
       .filter((t) => readyMap.has(t.deezer_id))
       .slice(0, wantS)
       .map((t) => ({ ...t, lyrics: undefined, mode: "stems" as const, stems: stemsPlan(readyMap.get(t.deezer_id)!, variant, instrument) }));
-    stemsCandidates = mixed.filter((t) => !readyMap.has(t.deezer_id));
+    stemsCandidates = mixed.filter((t) => !readyMap.has(t.deezer_id) && !blocked.has(t.deezer_id));
   }
   const haveS = stemsReady.length;
   // padrão: só as prontas (não espera a fila). "Esperar preparar" (com o separador
   // ligado e a fila andando): as que faltam são preparadas em segundo plano
-  const queueRuns = workerOn && !queuePaused;
+  const queueRuns = workerOn && !queuePaused && !queueFull;
   const waitS = waitStems && queueRuns;
   const pendingS = waitS ? wantS - haveS : 0;
 
@@ -182,7 +185,7 @@ async function prepareMatch(
       mode: "stems",
       have: haveS,
       want: wantS,
-      queue: !workerOn ? "off" : queuePaused ? "paused" : "running",
+      queue: !workerOn ? "off" : queuePaused ? "paused" : queueFull ? "full" : "running",
       etaSeconds: stemsEtaS,
     });
   const only = modes.length === 1 && short.length > 0;
@@ -223,9 +226,10 @@ async function prepareMatch(
   const op = [...otherPool.filter((t) => !bgSet.has(t.deezer_id)), ...otherPool.filter((t) => bgSet.has(t.deezer_id))];
   const obp = [...obraPool];
   const sp = [...stemsReady];
-  const ordered: PickedTrack[] = [];
-  const pendingPos: number[] = [];
-  const pendingStems: number[] = [];
+  let ordered: PickedTrack[] = [];
+  // rodadas que serão preparadas em segundo plano (as posições saem no fim, depois dos ajustes)
+  const pendingContT: PickedTrack[] = [];
+  const pendingStemsT: PickedTrack[] = [];
   finalPlan.forEach((m) => {
     let t: PickedTrack | undefined;
     if (m === "stems") {
@@ -236,8 +240,11 @@ async function prepareMatch(
         return;
       }
       t = op.shift() ?? lp.shift();
-      if (t) pendingStems.push(ordered.length + 1);
-      if (t) ordered.push({ ...t, lyrics: undefined, mode: m });
+      if (t) {
+        const x: PickedTrack = { ...t, lyrics: undefined, mode: m };
+        pendingStemsT.push(x);
+        ordered.push(x);
+      }
       return;
     }
     if (m === "obra") {
@@ -251,7 +258,12 @@ async function prepareMatch(
       t = cp.shift();
       if (!t) {
         t = op.shift() ?? lp.shift();
-        if (t) pendingPos.push(ordered.length + 1);
+        if (t) {
+          const x: PickedTrack = { ...t, mode: m };
+          pendingContT.push(x);
+          ordered.push(x);
+        }
+        return;
       }
     } else t = op.shift() ?? lp.shift();
     if (t) ordered.push({ ...t, mode: m });
@@ -296,9 +308,26 @@ async function prepareMatch(
       ordered[pos] = { ...(swap ?? ordered[pos]), lyrics: undefined, cont: undefined, mode: ordered[pos].mode, quiz: r.quiz };
     });
   }
+  // faltou música e é "Um time por vez": rodadas desses modos num múltiplo do número de times
+  // (todos jogam o mesmo tanto); as que sobram viram reserva
+  const cut: PickedTrack[] = [];
+  if ((s.turnFormat ?? "buzz") === "turns") {
+    const teams = playingTeamCount(state.teams, state.players);
+    const turnIdx = ordered.map((t, i) => (TURN_MODES.includes(t.mode ?? "classic") ? i : -1)).filter((i) => i >= 0);
+    const over = teams > 1 ? turnIdx.length % teams : 0;
+    if (over && ordered.length > over) {
+      const drop = new Set(turnIdx.slice(-over));
+      ordered.forEach((t, i) => drop.has(i) && cut.push(t));
+      ordered = ordered.filter((_, i) => !drop.has(i));
+    }
+  }
+  const pendingPos = pendingContT.map((t) => ordered.indexOf(t) + 1).filter((p) => p > 0);
+  const pendingStems = pendingStemsT.map((t) => ordered.indexOf(t) + 1).filter((p) => p > 0);
+
   // reservas (morte súbita, sempre clássico): o que sobrou, sem os dados dos modos
   const usedIds = new Set(ordered.map((t) => t.deezer_id));
-  const leftovers = [...op, ...lp, ...cp]
+  const cutPlain = cut.filter((t) => !t.stems && t.mode !== "obra").map((t) => ({ ...t, mode: undefined, lyrics: undefined }));
+  const leftovers = [...op, ...lp, ...cp, ...cutPlain]
     .filter((t) => !usedIds.has(t.deezer_id))
     .slice(0, extra)
     .map((t) => ({ ...t, cont: undefined, quiz: undefined }));
@@ -508,6 +537,7 @@ const SHORT_EMOJI: Record<Short["mode"], string> = { lyrics: "📝", continue: "
 const STEMS_WHY: Record<NonNullable<Short["queue"]>, string> = {
   off: "e o separador está desligado",
   paused: "e a fila do separador está pausada",
+  full: "e a biblioteca está cheia de músicas fixadas (libere espaço em /biblioteca)",
   running: "(o separador ainda está preparando as outras)",
 };
 const SHORT_TEXT: Record<Short["mode"], (x: Short) => string> = {

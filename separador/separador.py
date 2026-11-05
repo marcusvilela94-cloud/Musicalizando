@@ -29,7 +29,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-VERSION = "1.0"
+VERSION = "1.1"
 HERE = Path(__file__).resolve().parent
 STEMS = ["drums", "bass", "guitar", "vocals"]  # o que o jogo usa (piano e other são descartados)
 NAMES = {"drums": "bateria", "bass": "baixo", "guitar": "guitarra", "vocals": "voz"}
@@ -154,6 +154,7 @@ def heartbeat_loop() -> None:
             rpc("npl_stems_heartbeat", {"p_info": {
                 "version": VERSION, "model": "htdemucs_6s", "status": STATE["status"],
                 "current": STATE["current"], "done": STATE["done"], "errors": STATE["errors"],
+                "limit_mb": LIMIT_MB,
             }})
         except Exception as e:  # sem internet etc.: tenta de novo daqui a pouco
             log(f"⚠️  Sinal de vida falhou: {e}")
@@ -292,7 +293,7 @@ def process(model, job: dict) -> None:
         + (f" — sem conteúdo: {', '.join(empty)}" if empty else ""))
     log("   níveis (dB): " + ", ".join(f"{NAMES[n]} {levels[n]}" for n in STEMS) + f" | mistura {mix_db:.1f}")
 
-    # limite do cache: apaga as usadas há mais tempo
+    # limite do cache: apaga as usadas há mais tempo (menos as fixadas; o limite da biblioteca vale mais que o .env)
     gone = rpc("npl_stems_evict", {"p_limit_bytes": int(LIMIT_MB * 1024 * 1024)}) or []
     if gone:
         files = [p for g in gone for p in (g.get("paths") or {}).values()]
@@ -300,7 +301,7 @@ def process(model, job: dict) -> None:
             remove(files)
         except Exception as e:
             log(f"⚠️  Não consegui apagar arquivos antigos do Storage: {e}")
-        log(f"🧹 Cache acima de {LIMIT_MB:.0f} MB: apaguei {len(gone)} música(s) usadas há mais tempo.")
+        log(f"🧹 Cache acima do limite: apaguei {len(gone)} música(s) usadas há mais tempo.")
 
 
 def main() -> None:
@@ -330,14 +331,18 @@ def main() -> None:
             continue
         if not job:
             # a pausa fica no banco (botão "Pausar fila" no jogo): o claim não entrega nada
-            paused = False
+            paused = full = False
             try:
-                paused = bool(((rpc("npl_stems_status", {"p_ids": []}) or {}).get("global") or {}).get("paused"))
+                g = (rpc("npl_stems_status", {"p_ids": []}) or {}).get("global") or {}
+                paused, full = bool(g.get("paused")), bool(g.get("full"))
             except Exception:
                 pass
-            if idle_logged != ("pausada" if paused else "vazia"):
-                log("⏸️  Fila pausada no jogo. Esperando continuar…" if paused else "💤 Fila vazia. Esperando pedidos…")
-                idle_logged = "pausada" if paused else "vazia"
+            why = "pausada" if paused else "cheia" if full else "vazia"
+            if idle_logged != why:
+                log({"pausada": "⏸️  Fila pausada no jogo. Esperando continuar…",
+                     "cheia": "📌 Biblioteca cheia de músicas fixadas. Libere espaço em /biblioteca…",
+                     "vazia": "💤 Fila vazia. Esperando pedidos…"}[why])
+                idle_logged = why
             STATE["status"], STATE["current"] = ("pausado" if paused else "aguardando"), None
             time.sleep(POLL_S)
             continue
