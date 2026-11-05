@@ -144,6 +144,14 @@ export type StemsStatus = {
   queue: Partial<Record<"pending" | "processing" | "error", number>>;
   errors: { deezer_id: number; error: string | null }[];
   cache: { songs: number; bytes: number };
+  /** a fila inteira (todas as salas): pausa, pendentes e tempo médio por música */
+  global?: {
+    paused: boolean;
+    pending: number;
+    processing: number;
+    current_started_at: string | null;
+    avg_seconds: number | null;
+  };
 };
 
 /** "Um time por vez": de quem é a vez nesta rodada. */

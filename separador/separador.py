@@ -320,7 +320,7 @@ def main() -> None:
     STATE["status"] = "aguardando"
     log(f"👀 Olhando a fila a cada {POLL_S:.0f}s. Deixe esta janela aberta (Ctrl+C para sair).")
 
-    idle_logged = False
+    idle_logged: str | bool = False
     while True:
         try:
             job = rpc("npl_stems_claim")
@@ -329,13 +329,19 @@ def main() -> None:
             time.sleep(max(POLL_S, 10))
             continue
         if not job:
-            if not idle_logged:
-                log("💤 Fila vazia. Esperando pedidos…")
-                idle_logged = True
-            STATE["status"], STATE["current"] = "aguardando", None
+            # a pausa fica no banco (botão "Pausar fila" no jogo): o claim não entrega nada
+            paused = False
+            try:
+                paused = bool(((rpc("npl_stems_status", {"p_ids": []}) or {}).get("global") or {}).get("paused"))
+            except Exception:
+                pass
+            if idle_logged != ("pausada" if paused else "vazia"):
+                log("⏸️  Fila pausada no jogo. Esperando continuar…" if paused else "💤 Fila vazia. Esperando pedidos…")
+                idle_logged = "pausada" if paused else "vazia"
+            STATE["status"], STATE["current"] = ("pausado" if paused else "aguardando"), None
             time.sleep(POLL_S)
             continue
-        idle_logged = False
+        idle_logged: str | bool = False
         STATE["status"] = "processando"
         try:
             process(model, job)

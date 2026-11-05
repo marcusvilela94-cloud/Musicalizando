@@ -19,6 +19,9 @@ Dê dois cliques em **`iniciar-separador.bat`** e deixe a janela aberta.
 - A cada 5 s ele olha a fila; a cada 30 s grava o "sinal de vida" (a configuração
   do jogo mostra "Separador ligado/desligado").
 - Cada música leva ~40 s neste PC (CPU, medido).
+- "Pausar fila" / "Limpar fila" (configuração do jogo, Instrumentos) ficam no banco: pausado, ele
+  termina a música atual e não pega outra até "Continuar fila" (não precisa reiniciar o separador).
+  Limpar tira só os pedidos que ainda não começaram; a música atual e o cache ficam.
 - Cache limitado a 200 MB (`CACHE_LIMITE_MB`): passou disso, apaga as usadas há mais tempo.
 - Faixa com volume abaixo de mistura − 16 dB (`LIMIAR_SILENCIO_DB`) é marcada "sem conteúdo"
   (ex.: guitarra em funk) e o jogo pula essa camada. Os níveis medidos aparecem no terminal.

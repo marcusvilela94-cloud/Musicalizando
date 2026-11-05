@@ -108,6 +108,10 @@ export const api = {
   stemsStatus: (ids: number[]) => call<StemsStatus>("npl_stems_status", { p_ids: ids }, false),
   stemsRequest: (code: string, owner: string, ids: number[]) =>
     call<number>("npl_stems_request", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
+  stemsSetPaused: (code: string, owner: string, paused: boolean) =>
+    call<boolean>("npl_stems_set_paused", { p_code: code, p_owner_token: owner, p_paused: paused }, false),
+  /** Tira da fila os pedidos que ainda não começaram (a atual e o cache ficam). */
+  stemsClear: (code: string, owner: string) => call<number>("npl_stems_clear", { p_code: code, p_owner_token: owner }, false),
   stemsTouch: (code: string, owner: string, ids: number[]) =>
     call<void>("npl_stems_touch", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
   fillStems: (code: string, owner: string, match: number, position: number, track: PickedTrack | null, prep: { active: boolean; done: number; total: number } | null) =>

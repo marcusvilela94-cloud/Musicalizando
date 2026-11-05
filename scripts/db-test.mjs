@@ -1307,6 +1307,29 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     assert.equal((await rpc("npl_stems_status", [111])).ready.length, 0);
     assert.deepEqual(await rpc("npl_stems_evict", 200_000_000), [], "já cabe");
     await db.exec("delete from npl_stems_cache; delete from npl_stems_queue;");
+
+    // pausar / continuar / limpar a fila
+    assert.equal(await rpc("npl_stems_request", sc0, OWNER, [501, 502, 503]), 3);
+    assert.equal((await rpc("npl_stems_claim")).deezer_id, 501, "a atual");
+    await fails(rpc("npl_stems_set_paused", sc0, "token-errado", true), "");
+    assert.equal(await rpc("npl_stems_set_paused", sc0, OWNER, true), true);
+    st = await rpc("npl_stems_status", []);
+    assert.equal(st.global.paused, true);
+    assert.equal(st.global.pending, 2);
+    assert.equal(st.global.processing, 1);
+    assert.equal(await rpc("npl_stems_claim"), null, "pausada: não entrega nada");
+    // a atual termina normalmente mesmo pausada
+    await db.query("update npl_stems_queue set started_at = now() - interval '40 seconds' where deezer_id = 501");
+    await rpc("npl_stems_done", 501, "key-501", paths("key-501"), 1000, { drums: true, bass: true, guitar: true, vocals: true }, {});
+    st = await rpc("npl_stems_status", []);
+    assert.ok(st.global.avg_seconds >= 39 && st.global.avg_seconds <= 41, "tempo médio por música");
+    assert.equal(await rpc("npl_stems_set_paused", sc0, OWNER, false), false);
+    assert.equal((await rpc("npl_stems_claim")).deezer_id, 502, "continuou");
+    assert.equal(await rpc("npl_stems_clear", sc0, OWNER), 1, "limpa só a pendente");
+    st = await rpc("npl_stems_status", [501, 502, 503]);
+    assert.deepEqual(st.queue, { processing: 1 }, "a que está sendo separada fica");
+    assert.equal(st.ready.length, 1, "o cache fica");
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue;");
   }
 
   // ---------- Instrumentos: partida ----------

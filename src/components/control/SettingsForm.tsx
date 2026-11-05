@@ -5,7 +5,7 @@ import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
 import type { ArtistLevel, ModeId, MusicSource, ObraPackId, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
-import { STEM_EMOJI, STEM_LABEL, STEM_ORDER } from "@/modes/stems/logic";
+import { STEM_EMOJI, STEM_LABEL, STEM_ORDER, fmtDuration, stemsEta } from "@/modes/stems/logic";
 import { getMode } from "@/modes";
 import { MODE_LIST, TURN_MODES, enabledModes, playingTeamCount, turnRounds, type ModeOrder } from "@/modes/schedule";
 
@@ -535,6 +535,35 @@ function StemsPanel({
   const total = ids?.length ?? 0;
   const current = workerOn && typeof status?.worker?.info?.current === "string" ? (status.worker.info.current as string) : null;
   const mb = (status?.cache.bytes ?? 0) / 1048576;
+  const g = status?.global;
+  const paused = !!g?.paused;
+  const queued = (g?.pending ?? 0) + (g?.processing ?? 0);
+  const eta = stemsEta(g);
+
+  // pausar/continuar e limpar: valem para a fila inteira (o separador respeita sem reiniciar)
+  const control = async (fn: () => Promise<string>) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      setMsg(await fn());
+      setStatus(await api.stemsStatus(ids ?? []));
+    } catch (e) {
+      setMsg(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const togglePause = () =>
+    control(async () =>
+      (await api.stemsSetPaused(code, token, !paused))
+        ? "Fila pausada: o separador termina a música atual e espera."
+        : "Fila continuando.",
+    );
+  const clearQueue = () =>
+    control(async () => {
+      const n = await api.stemsClear(code, token);
+      return n ? `${n} pedido${n === 1 ? "" : "s"} removido${n === 1 ? "" : "s"} da fila.` : "Não havia pedidos esperando.";
+    });
 
   const prepare = async () => {
     if (!ids) return;
@@ -587,7 +616,7 @@ function StemsPanel({
           "Verificando o separador…"
         ) : workerOn ? (
           <>
-            🟢 Separador ligado
+            {paused ? "⏸️ Separador ligado, fila pausada" : "🟢 Separador ligado"}
             {current ? (
               <>
                 {" "}
@@ -617,8 +646,32 @@ function StemsPanel({
             <Button variant="secondary" disabled={busy || ready >= total} onClick={prepare}>
               {busy ? "Pedindo…" : "Preparar instrumentos destas fontes"}
             </Button>
+            <Button variant="secondary" disabled={busy || status === null} onClick={togglePause}>
+              {paused ? "▶️ Continuar fila" : "⏸️ Pausar fila"}
+            </Button>
+            <Button variant="secondary" disabled={busy || !g?.pending} onClick={clearQueue}>
+              🧹 Limpar fila
+            </Button>
             {msg && <span className="text-sm text-white/80">{msg}</span>}
           </div>
+          {queued > 0 && (
+            <p className="text-sm text-white/80">
+              Fila do separador: {queued} música{queued === 1 ? "" : "s"}
+              {eta &&
+                (paused ? (
+                  <> · pausada (faltariam ~{fmtDuration(eta.seconds)})</>
+                ) : (
+                  <>
+                    {" "}
+                    · ⏱️ ~{fmtDuration(eta.seconds)} restantes
+                    <span className="text-white/50">
+                      {" "}
+                      ({eta.guessed ? "estimativa inicial de" : "média de"} {fmtDuration(eta.avg)} por música)
+                    </span>
+                  </>
+                ))}
+            </p>
+          )}
           <p className="text-xs text-white/50">
             Cache: {status?.cache.songs ?? 0} músicas · {mb.toFixed(0)} de 200 MB (as usadas há mais tempo saem quando enche).
             {!workerOn && pending > 0 && " Os pedidos ficam guardados até o separador ligar."}

@@ -56,3 +56,28 @@ export function stemsPlan(r: Ready, variant: StemsVariant, instrument: StemName 
   const pick = instrument !== "random" && audible(instrument) ? instrument : pool[Math.floor(Math.random() * pool.length)];
   return { key: r.key, variant, instrument: pick };
 }
+
+/** Tempo por música quando ainda não há histórico (separador na CPU). */
+const FALLBACK_SECONDS = 60;
+
+/**
+ * Estimativa do tempo que falta para esvaziar a fila: média por música ×
+ * pendentes, mais o que falta da atual. null quando não há nada na fila.
+ * guessed = ainda sem histórico (usa ~1 min por música).
+ */
+export function stemsEta(g: StemsStatus["global"], now = Date.now()): { seconds: number; avg: number; guessed: boolean } | null {
+  if (!g || g.pending + g.processing === 0) return null;
+  const guessed = !g.avg_seconds;
+  const avg = g.avg_seconds || FALLBACK_SECONDS;
+  const elapsed = g.current_started_at ? (now - new Date(g.current_started_at).getTime()) / 1000 : 0;
+  const current = g.processing > 0 ? Math.max(avg * 0.1, avg - elapsed) : 0;
+  return { seconds: Math.round(g.pending * avg + current), avg, guessed };
+}
+
+/** 45 s · 3 min · 1 h 20 min */
+export function fmtDuration(s: number) {
+  if (s < 60) return `${Math.max(1, Math.round(s))} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+}

@@ -6,7 +6,7 @@ import { friendlyError } from "@/lib/errors";
 import type { ModeId, PickedTrack, RoomState, StemName, StemsVariant } from "@/lib/types";
 import { obraPacksOf, pickObraTracks } from "@/lib/obra";
 import { isQuizMode } from "@/modes/quiz/logic";
-import { stemsPlan } from "@/modes/stems/logic";
+import { fmtDuration, stemsEta, stemsPlan } from "@/modes/stems/logic";
 import { TURN_MODES, enabledModes, modeSchedule, playingTeamCount } from "@/modes/schedule";
 
 /** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
@@ -15,7 +15,15 @@ const TIEBREAK_RESERVE = 5;
 const CONTINUE_GAP_MS = 3200;
 
 /** Falta de músicas para um modo que precisa de preparo. */
-type Short = { mode: "lyrics" | "continue" | "stems"; have: number; want: number };
+type Short = {
+  mode: "lyrics" | "continue" | "stems";
+  have: number;
+  want: number;
+  /** Instrumentos: por que não dá para preparar agora ("running" = dá: "Esperar preparar") */
+  queue?: "off" | "paused" | "running";
+  /** Instrumentos: estimativa para a fila andar (segundos) */
+  etaSeconds?: number;
+};
 /** Instrumentos: rodadas que esperam o separador (em segundo plano). */
 type StemsBg = { positions: number[]; candidates: PickedTrack[]; variant: StemsVariant; instrument: StemName | "random" };
 type Prepared = {
@@ -44,7 +52,14 @@ export type Progress = { label: string; done: number; total: number };
  *    desse modo vão para mais adiante e são preparadas em segundo plano
  *    (se não ficarem prontas a tempo, viram outro modo ligado).
  */
-async function prepareMatch(state: RoomState, code: string, token: string, onProgress: (p: Progress | null) => void): Promise<Prepared> {
+async function prepareMatch(
+  state: RoomState,
+  code: string,
+  token: string,
+  onProgress: (p: Progress | null) => void,
+  /** Instrumentos: false = só as prontas (padrão); true = as que faltam são preparadas durante a partida */
+  waitStems = false,
+): Promise<Prepared> {
   const s = state.room.settings;
   const modes = enabledModes(s);
   const extra = (s.tiebreak ?? "sudden") === "sudden" ? TIEBREAK_RESERVE : 0;
@@ -127,11 +142,15 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   let stemsReady: PickedTrack[] = [];
   let stemsCandidates: PickedTrack[] = [];
   let workerOn = false;
+  let queuePaused = false;
+  let stemsEtaS: number | undefined;
   if (wantS) {
     onProgress({ label: "Conferindo os instrumentos prontos…", done: 0, total: 0 });
     const srcPool = await deezer.pool(s.sources, s.versionFilter !== false).then((r) => r.tracks).catch(() => all);
     const st = await api.stemsStatus(srcPool.map((t) => t.deezer_id)).catch(() => null);
     workerOn = !!st?.worker?.alive;
+    queuePaused = !!st?.global?.paused;
+    stemsEtaS = stemsEta(st?.global)?.seconds;
     const readyMap = new Map((st?.ready ?? []).map((r) => [r.deezer_id, r]));
     const mixed = [...srcPool].sort(() => Math.random() - 0.5);
     stemsReady = mixed
@@ -141,8 +160,11 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
     stemsCandidates = mixed.filter((t) => !readyMap.has(t.deezer_id));
   }
   const haveS = stemsReady.length;
-  // separador ligado: as que faltam são preparadas em segundo plano; desligado: só as prontas
-  const pendingS = workerOn ? wantS - haveS : 0;
+  // padrão: só as prontas (não espera a fila). "Esperar preparar" (com o separador
+  // ligado e a fila andando): as que faltam são preparadas em segundo plano
+  const queueRuns = workerOn && !queuePaused;
+  const waitS = waitStems && queueRuns;
+  const pendingS = waitS ? wantS - haveS : 0;
 
   // as que viraram "continuar" ou "instrumentos" saem das outras
   const usedC = new Set([...contOk, ...stemsReady].map((t) => t.deezer_id));
@@ -155,7 +177,14 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   const short: Short[] = [];
   if (haveL < wantL) short.push({ mode: "lyrics", have: haveL, want: wantL });
   if (contOnly && haveC < wantC) short.push({ mode: "continue", have: haveC, want: wantC });
-  if (!workerOn && haveS < wantS) short.push({ mode: "stems", have: haveS, want: wantS });
+  if (!waitS && haveS < wantS)
+    short.push({
+      mode: "stems",
+      have: haveS,
+      want: wantS,
+      queue: !workerOn ? "off" : queuePaused ? "paused" : "running",
+      etaSeconds: stemsEtaS,
+    });
   const only = modes.length === 1 && short.length > 0;
 
   // rodadas sem música pronta ("continuar" / "instrumentos"): vão para mais adiante (dá tempo de preparar)
@@ -180,7 +209,7 @@ async function prepareMatch(state: RoomState, code: string, token: string, onPro
   let keepS = haveS;
   const other = (m: ModeId) => (only ? m : (fallback[k++ % Math.max(1, fallback.length)] ?? "classic"));
   let finalPlan: ModeId[] = plan.map((m) =>
-    m === "lyrics" && keepL-- <= 0 ? other(m) : m === "stems" && !workerOn && keepS-- <= 0 ? other(m) : m,
+    m === "lyrics" && keepL-- <= 0 ? other(m) : m === "stems" && !waitS && keepS-- <= 0 ? other(m) : m,
   );
   if (only) finalPlan = finalPlan.slice(0, modes[0] === "lyrics" ? haveL : modes[0] === "stems" ? haveS : haveC);
   else if (contOnly) finalPlan = finalPlan.slice(0, haveC);
@@ -435,11 +464,19 @@ export function useMatchStarter(state: RoomState, code: string, token: string) {
       setShort(null);
       await begin(p);
     });
+  // Instrumentos: "Esperar preparar" — sorteia de novo deixando as rodadas que faltam para o separador
+  const waitStems = () =>
+    run(async () => {
+      setShort(null);
+      const p = await prepareMatch(state, code, token, setProgress, true);
+      if (p.short.length) setShort(p);
+      else await begin(p);
+    });
   const backToConfig = () => {
     setShort(null);
     api.setPhase(code, token, "config").catch((e) => setError(friendlyError(e)));
   };
-  return { busy, error, short, progress, start, confirm, backToConfig, dismiss: () => setShort(null) };
+  return { busy, error, short, progress, start, confirm, waitStems, backToConfig, dismiss: () => setShort(null) };
 }
 
 export type MatchStarter = ReturnType<typeof useMatchStarter>;
@@ -466,31 +503,49 @@ export function PrepareProgress({ m, compact }: { m: MatchStarter; compact?: boo
 }
 
 const SHORT_EMOJI: Record<Short["mode"], string> = { lyrics: "📝", continue: "🎤", stems: "🥁" };
-const SHORT_TEXT: Record<Short["mode"], (n: number) => string> = {
-  stems: (n) =>
-    `Só ${n} música${n === 1 ? "" : "s"} com instrumentos prontos, e o separador está desligado: ${n} rodada${n === 1 ? "" : "s"} de Instrumentos.`,
-  lyrics: (n) => `Só encontramos ${n} música${n === 1 ? "" : "s"} com letra nessas playlists.`,
-  continue: (n) => `Só ${n} música${n === 1 ? "" : "s"} servem para “Continuar a letra” (precisa de letra sincronizada e voz clara).`,
+const STEMS_WHY: Record<NonNullable<Short["queue"]>, string> = {
+  off: "e o separador está desligado",
+  paused: "e a fila do separador está pausada",
+  running: "(o separador ainda está preparando as outras)",
+};
+const SHORT_TEXT: Record<Short["mode"], (x: Short) => string> = {
+  stems: ({ have: n, want, queue }) =>
+    `Só ${n} de ${want} música${want === 1 ? "" : "s"} com instrumentos prontos ${STEMS_WHY[queue ?? "off"]}: ${n} rodada${n === 1 ? "" : "s"} de Instrumentos.`,
+  lyrics: ({ have: n }) => `Só encontramos ${n} música${n === 1 ? "" : "s"} com letra nessas playlists.`,
+  continue: ({ have: n }) =>
+    `Só ${n} música${n === 1 ? "" : "s"} servem para “Continuar a letra” (precisa de letra sincronizada e voz clara).`,
 };
 
 /** Aviso antes de começar quando faltou música preparada. */
 export function LyricsShortNotice({ m, compact }: { m: MatchStarter; compact?: boolean }) {
   const p = m.short;
   if (!p?.short.length) return null;
+  const canWait = p.short.find((x) => x.mode === "stems" && x.queue === "running");
   return (
     <div className="npl-pop flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-yellow-300 bg-black/40 p-5 text-center">
       {p.short.map((x) => (
         <p key={x.mode} className={`font-display ${compact ? "text-xl" : "text-3xl"}`}>
-          {SHORT_EMOJI[x.mode]} {SHORT_TEXT[x.mode](x.have)}
+          {SHORT_EMOJI[x.mode]} {SHORT_TEXT[x.mode](x)}
         </p>
       ))}
       {!p.only && (
         <p className="text-white/70">As rodadas que faltaram viram rodadas dos outros modos ligados ({p.rounds} músicas no total).</p>
       )}
+      {canWait && (
+        <p className="text-white/70">
+          “Esperar preparar”: começa já, as rodadas de Instrumentos vão mais para o fim e entram conforme o separador termina.
+        </p>
+      )}
       <div className={`flex flex-wrap justify-center gap-3 ${compact ? "w-full flex-col" : ""}`}>
         <Button className={compact ? "text-xl py-3" : "text-2xl px-8 py-3"} disabled={m.busy || p.rounds === 0} onClick={m.confirm}>
           Jogar com {p.rounds} música{p.rounds === 1 ? "" : "s"}
         </Button>
+        {canWait && (
+          <Button variant="secondary" className="text-xl" disabled={m.busy} onClick={m.waitStems}>
+            ⏳ Esperar preparar
+            {canWait.etaSeconds ? <span className="text-base opacity-70"> (fila: ~{fmtDuration(canWait.etaSeconds)})</span> : null}
+          </Button>
+        )}
         <Button variant="secondary" className="text-xl" onClick={m.backToConfig}>
           Trocar as playlists
         </Button>
