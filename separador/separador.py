@@ -58,7 +58,7 @@ def load_env() -> dict[str, str]:
     for k in ("JOGO_URL", "SEPARADOR_TOKEN", "SEPARADOR_NOME", "CACHE_LIMITE_MB", "INTERVALO_FILA_SEGUNDOS",
               "LIMIAR_SILENCIO_DB", "MP3_KBPS", "PORT", "SAIR_OCIOSO_MIN", "MAX_MINUTOS", *env):
         if os.environ.get(k):
-            env[k] = os.environ[k]
+            env[k] = os.environ[k].strip()  # segredo colado com espaço/quebra de linha
     return env
 
 
