@@ -7,7 +7,7 @@ import type { LyricVerses } from "./types";
 const API = "https://lrclib.net/api";
 const USER_AGENT = "Musicalizando/1.0 (https://github.com/marcusvilela94-cloud/Musicalizando)";
 
-type LrcRecord = {
+export type LrcRecord = {
   trackName?: string;
   artistName?: string;
   duration?: number;
@@ -85,12 +85,16 @@ const lyricsText = (r: LrcRecord | null) => {
  * (normalizados) e duração dentro de ±3 s. Instrumental/sem letra -> null.
  */
 export async function fetchLyrics(title: string, artist: string, duration?: number): Promise<string | null> {
+  return lyricsText(await fetchLyricsRecord(title, artist, duration));
+}
+
+/** O registro da LRCLIB (plainLyrics + syncedLyrics), com as mesmas regras de busca. */
+export async function fetchLyricsRecord(title: string, artist: string, duration?: number): Promise<LrcRecord | null> {
   const q = new URLSearchParams({ track_name: title, artist_name: artist });
   if (duration) q.set("duration", String(Math.round(duration)));
   const exact = await lrclib<LrcRecord>(`/get?${q}`);
   if (exact?.instrumental) return null;
-  const text = lyricsText(exact);
-  if (text) return text;
+  if (lyricsText(exact)) return exact;
 
   const list = await lrclib<LrcRecord[]>(`/search?${new URLSearchParams({ track_name: title, artist_name: artist })}`);
   const t = key(title);
@@ -102,7 +106,7 @@ export async function fetchLyrics(title: string, artist: string, duration?: numb
       (!duration || !r.duration || Math.abs(r.duration - duration) <= 3) &&
       !!lyricsText(r),
   );
-  return lyricsText(hit ?? null);
+  return hit ?? null;
 }
 
 // ---------------------------------------------------------------------

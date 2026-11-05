@@ -141,6 +141,9 @@ export async function getTrack(id: string) {
     id: String(t.id),
     preview: t.preview || null,
     title: t.title,
+    titleShort: t.title_short ?? t.title,
+    duration: t.duration,
+    cover: t.album?.cover_medium ?? null,
     artist: t.artist?.name ?? "",
     artists: [...new Set(artists)],
   };
