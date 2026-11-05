@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
@@ -16,12 +17,16 @@ export function settingsSummary(state: RoomState) {
   const on = enabledModes(s);
   const any = (modes: string[]) => on.some((m) => modes.includes(m));
   const buzz = (s.turnFormat ?? "buzz") === "buzz";
-  const turnsOn = !buzz && any(["classic", "lyrics", "continue", "quiz_open"]);
-  const buzzRules = buzz && any(["classic", "lyrics", "continue", "quiz_open"]);
+  const turnsOn = !buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra"]);
+  const buzzRules = buzz && any(["classic", "lyrics", "continue", "quiz_open", "obra"]);
+  const packs = on.includes("obra")
+    ? "pacotes: " + OBRA_PACKS.filter((p) => obraPacksOf(s).includes(p.id)).map((p) => `${p.emoji} ${p.label}`).join(", ")
+    : "";
   const orderLabel = { alternate: "alternando", random: "sorteados", blocks: "em blocos" }[s.modeOrder ?? "alternate"];
   return [
     `${s.rounds} músicas`,
     on.map((m) => getMode(m).label).join(" + ") + (on.length > 1 ? ` (${orderLabel})` : ""),
+    packs,
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
     turnsOn ? (s.passOnWrong !== false ? "um time por vez (passa a vez)" : "um time por vez") : "",
     !any(["classic", "lyrics"]) ? "" : s.scoring === "title" ? "só a música" : "artista e música",

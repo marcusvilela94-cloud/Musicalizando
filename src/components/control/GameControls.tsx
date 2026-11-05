@@ -199,7 +199,7 @@ export function OverrideButtons({
   const hint = auctionOf(r)?.hint;
   // desempate: só a música vale
   const both =
-    !hint && !tiebreakOf(r) && r?.mode !== "continue" && !isQuizMode(r?.mode) && state.room.settings.scoring === "artist_title";
+    !hint && !tiebreakOf(r) && r?.mode !== "continue" && r?.mode !== "obra" && !isQuizMode(r?.mode) && state.room.settings.scoring === "artist_title";
   const art = attempt.artist_result === "ok";
   const tit = attempt.title_result === "ok";
   const set = (a: boolean, t: boolean) => api.overrideParts(code, token, attempt.id, a, t).catch((e) => onError(friendlyError(e)));

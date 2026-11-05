@@ -37,6 +37,7 @@ import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import { ContinueRevealLine, ContinueStack, SingAlong } from "@/modes/continue/ContinueView";
 import { CONT_STOP_BEFORE, contOf, singUntil } from "@/modes/continue/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
+import { OBRA_KIND, obraOf } from "@/modes/obra/logic";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
 import { QuizQuestion, QuizRevealTv } from "@/modes/quiz/QuizViews";
 import { enabledModes } from "@/modes/schedule";
@@ -452,7 +453,7 @@ function StageBar({ round }: { round: Round }) {
 function Worth({ state, round }: { state: RoomState; round: Round }) {
   const pts = stagePoints(round);
   const need = missingParts(state, round);
-  if (state.room.settings.scoring === "title" || round.mode === "continue" || isQuizMode(round.mode)) {
+  if (state.room.settings.scoring === "title" || round.mode === "continue" || isQuizMode(round.mode) || round.mode === "obra") {
     return <span>Valendo <b className="text-yellow-300 text-5xl">{pts}</b> pts</span>;
   }
   if (need.artist && need.title) {
@@ -467,6 +468,20 @@ function Worth({ state, round }: { state: RoomState; round: Round }) {
     <span>
       {need.title ? "Música" : "Artista"} valendo <b className="text-yellow-300 text-5xl">{need.title ? pts : artistPoints(pts)}</b> pts
     </span>
+  );
+}
+
+/** "Qual é a obra?": o pacote da rodada como dica do tipo de obra. */
+function ObraHint({ round }: { round: Round }) {
+  const o = obraOf(round);
+  if (!o) return null;
+  return (
+    <div className="npl-pop flex items-center gap-4 rounded-3xl bg-white/10 px-6 py-3">
+      <span className="text-7xl">{o.emoji}</span>
+      <span className="font-display text-4xl">
+        Qual é <b className="text-yellow-300">{OBRA_KIND[o.pack ?? ""] ?? "a obra"}</b>?
+      </span>
+    </div>
   );
 }
 
@@ -490,6 +505,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
     <div className="flex w-full flex-col items-center gap-6">
       {!contOf(round) && !isQuizMode(round.mode) && <StageBar round={round} />}
       {quizOf(round) && <QuizQuestion round={round} now={now} />}
+      {obraOf(round) && <ObraHint round={round} />}
       {tb && <TiebreakBoard state={state} tb={tb} />}
       <div className="flex flex-wrap items-center justify-center gap-4 font-display text-3xl">
         {tb ? (
@@ -519,7 +535,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
             </p>
           )}
           <p className="font-display text-4xl text-white">
-            {contOf(round) ? "Sabe a próxima linha?" : quizOf(round) ? "Sabe a resposta?" : "Sabe qual é?"} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
+            {contOf(round) ? "Sabe a próxima linha?" : quizOf(round) ? "Sabe a resposta?" : obraOf(round) ? "Sabe qual é a obra?" : "Sabe qual é?"} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
           </p>
         </div>
       )}
@@ -650,6 +666,7 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
   const tb = tiebreakOf(round);
   const auc = auctionOf(round);
   const quiz = quizOf(round);
+  const obra = obraOf(round);
   if (quiz) {
     const winners = [...delta.entries()].filter(([, d]) => d > 0);
     return (
@@ -714,8 +731,26 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
         <img src={r.cover} alt="" className="npl-pop h-72 w-72 rounded-3xl shadow-2xl lg:h-96 lg:w-96" />
       )}
       <div className="flex flex-1 flex-col gap-4 text-center lg:text-left">
-        <p className="font-display text-6xl font-bold leading-tight">{r?.title}</p>
-        <p className="font-display text-4xl text-pink-300">{r ? artistCredits(r) : ""}</p>
+        {obra?.answer ? (
+          <>
+            <p className="font-display text-7xl font-bold leading-tight text-yellow-300">
+              {obra.emoji} {obra.answer}
+            </p>
+            <p className="font-display text-3xl">
+              🎵 {r?.title} <span className="text-pink-300">— {r ? artistCredits(r) : ""}</span>
+            </p>
+            {obra.tipo && (
+              <p className="self-center rounded-full bg-white/15 px-4 py-1 font-display text-2xl lg:self-start">
+                {obra.tipo === "abertura" ? "🎬 Abertura da novela" : "💞 Tema da novela"}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="font-display text-6xl font-bold leading-tight">{r?.title}</p>
+            <p className="font-display text-4xl text-pink-300">{r ? artistCredits(r) : ""}</p>
+          </>
+        )}
         {contOf(round)?.reveal && <ContinueRevealLine round={round} elapsed={null} size="phone" />}
         {lyricsOf(round)?.plain && (
           <LyricsReveal round={round} stage={attempts.find((a) => a.status === "correct")?.stage ?? null} />
@@ -730,7 +765,9 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
           <TiebreakResult state={state} round={round} tb={tb} />
         ) : artistTeam || titleTeam ? (
           <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-            {titleTeam && titleTeam.id === artistTeam?.id ? (
+            {obra && titleTeam ? (
+              <TeamChip team={titleTeam} className="text-4xl px-6 py-2">🎉 {titleTeam.name} acertou</TeamChip>
+            ) : titleTeam && titleTeam.id === artistTeam?.id ? (
               <TeamChip team={titleTeam} className="text-4xl px-6 py-2">🎉 {titleTeam.name} acertou tudo</TeamChip>
             ) : (
               <>

@@ -33,6 +33,7 @@ export const QUIZ_KIND_LABEL: Record<QuizKind, string> = {
   cover: "🖼️ Capa",
   complete: "✍️ Complete o título",
   trivia: "💡 Curiosidade",
+  obra: "🎭 Qual é a obra?",
 };
 
 /** Desfoque da capa (px): começa forte e fica nítida em ~20 s. */

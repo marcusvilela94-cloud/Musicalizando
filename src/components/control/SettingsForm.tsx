@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import type { ArtistLevel, ModeId, MusicSource, RoomSettings, RoomState, SfxVolume } from "@/lib/types";
+import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
+import type { ArtistLevel, ModeId, MusicSource, ObraPackId, RoomSettings, RoomState, SfxVolume } from "@/lib/types";
 import { getMode } from "@/modes";
 import { MODE_LIST, TURN_MODES, enabledModes, playingTeamCount, turnRounds, type ModeOrder } from "@/modes/schedule";
 
@@ -37,6 +38,8 @@ const MODE_HINTS: Record<ModeId, string> = {
     "Pergunta sem alternativas (ano, álbum, quem canta, capa, complete o título, curiosidade…) com a prévia tocando ao fundo. Quem souber aperta EU SEI! e responde. Vale 100 (no ano digitado, errar por 1 vale 50).",
   quiz_choice:
     "Estilo Kahoot: pergunta e alternativas na TV; todos os times respondem ao mesmo tempo pelo celular, no Tempo de resposta. Acerto vale de 100 (na hora) a 50 (no fim do prazo).",
+  obra:
+    "Como o Clássico (trechos crescentes, EU SEI!), mas com trilhas e aberturas dos pacotes escolhidos: acerte o FILME, o ANIME ou a NOVELA. A TV mostra o emoji do pacote como dica. Usa só as músicas dos pacotes (não as fontes).",
 };
 
 const ORDER_HINTS: Record<ModeOrder, string> = {
@@ -47,10 +50,10 @@ const ORDER_HINTS: Record<ModeOrder, string> = {
 
 /** Em quais modos cada opção vale (para esconder ou etiquetar). Opções fora daqui valem para todos. */
 const APPLIES = {
-  clips: ["classic"] as ModeId[], // Trechos
+  clips: ["classic", "obra"] as ModeId[], // Trechos
   scoring: ["classic", "lyrics"] as ModeId[], // O que vale
-  turns: TURN_MODES, // Formato da vez: classic, lyrics, continue, quiz_open
-  buzzRules: ["classic", "lyrics", "continue", "quiz_open"] as ModeId[], // Bloqueio e Penalidade (só "Quem sabe primeiro")
+  turns: TURN_MODES, // Formato da vez: classic, lyrics, continue, quiz_open, obra
+  buzzRules: ["classic", "lyrics", "continue", "quiz_open", "obra"] as ModeId[], // Bloqueio e Penalidade (só "Quem sabe primeiro")
   curiosities: ["quiz_open", "quiz_choice"] as ModeId[], // Perguntas de curiosidade
 };
 
@@ -141,6 +144,12 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     update({ modePool: next, mode: next[0], modeSelection: next.length > 1 ? "random" : "fixed" });
   };
   const order: ModeOrder = settings.modeOrder ?? "alternate";
+  // "Qual é a obra?": pacotes ligados (pelo menos um)
+  const packs = obraPacksOf(settings);
+  const togglePack = (id: ObraPackId) => {
+    const next = packs.includes(id) ? packs.filter((p) => p !== id) : OBRA_PACKS.map((p) => p.id).filter((p) => p === id || packs.includes(p));
+    if (next.length) update({ obraPacks: next });
+  };
   // opção aparece se vale para algum modo ligado (senão fica escondida, sem perder o valor);
   // etiqueta "só no …" quando vale só para alguns dos ligados
   const applies = (modes: ModeId[]) => on.some((m) => modes.includes(m));
@@ -224,6 +233,27 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             );
           })}
         </div>
+        {on.includes("obra") && (
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-black/20 p-3">
+            <p className="font-display text-lg">🎭 Pacotes</p>
+            <Help text="As rodadas de “Qual é a obra?” usam só músicas destes pacotes (não as fontes de músicas). A mesma obra não se repete na partida." />
+            {OBRA_PACKS.map((p) => {
+              const active = packs.includes(p.id);
+              const last = active && packs.length === 1;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => togglePack(p.id)}
+                  disabled={last}
+                  title={last ? "Pelo menos um pacote precisa ficar ligado" : `${p.count} músicas`}
+                  className={`rounded-xl px-4 py-2 font-display text-lg transition ${active ? "bg-yellow-300 text-violet-950" : "bg-white/10 hover:bg-white/20"} ${last ? "cursor-default" : ""}`}
+                >
+                  {active ? "☑" : "☐"} {p.emoji} {p.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {on.length > 1 && (
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-black/20 p-3">
             <p className="font-display text-lg">Ordem dos modos</p>

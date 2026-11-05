@@ -43,7 +43,7 @@ export function suddenDeathWinner(s: RoomState): Team | null {
 export function missingParts(s: RoomState, r: Round) {
   if (tiebreakOf(r)) return { artist: false, title: !r.found?.title }; // desempate: só a música
   if (r.mode === "continue") return { artist: false, title: !r.found?.title }; // continuar a letra: só a linha
-  if (isQuizMode(r.mode)) return { artist: false, title: !r.found?.title }; // quiz: só a resposta
+  if (isQuizMode(r.mode) || r.mode === "obra") return { artist: false, title: !r.found?.title }; // quiz / obra: só a resposta
   if (r.mode === "auction") {
     const hint = r.auction?.hint;
     return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
@@ -80,7 +80,7 @@ export function partPoints(r: Round, part: "artist" | "title") {
  * Nos modos em que só vale uma coisa (quiz, continuar a letra) é "".
  */
 export function attemptParts(a: Attempt, mode?: string | null) {
-  if (mode && (isQuizMode(mode) || mode === "continue")) return "";
+  if (mode && (isQuizMode(mode) || mode === "continue" || mode === "obra")) return "";
   const parts = [a.artist_result === "ok" && "artista", a.title_result === "ok" && "música"].filter(Boolean);
   return parts.join(" e ");
 }

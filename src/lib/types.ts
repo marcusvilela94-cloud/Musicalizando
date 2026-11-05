@@ -23,7 +23,9 @@ export type Tiebreak = "sudden" | "accept";
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
-export type ModeId = "classic" | "auction" | "lyrics" | "continue" | "quiz_open" | "quiz_choice";
+export type ModeId = "classic" | "auction" | "lyrics" | "continue" | "quiz_open" | "quiz_choice" | "obra";
+/** "Qual é a obra?": pacotes temáticos. */
+export type ObraPackId = "cinema" | "anime" | "novelas";
 /** "Formato da vez": quem sabe primeiro (EU SEI!) ou um time por vez (rodízio). */
 export type TurnFormat = "buzz" | "turns";
 
@@ -48,6 +50,7 @@ export type RoomSettings = {
   curiosities?: boolean; // perguntas de curiosidade nos quizzes (padrão true)
   turnFormat?: TurnFormat; // padrão "buzz"
   passOnWrong?: boolean; // um time por vez: errou, passa a vez valendo metade (padrão true)
+  obraPacks?: ObraPackId[]; // "Qual é a obra?": pacotes ligados (padrão: todos)
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
@@ -73,7 +76,7 @@ export type PickedTrack = {
 };
 
 /** Tipos de pergunta do quiz. */
-export type QuizKind = "year" | "album" | "artist" | "feat" | "top" | "intruder" | "older" | "cover" | "complete" | "trivia";
+export type QuizKind = "year" | "album" | "artist" | "feat" | "top" | "intruder" | "older" | "cover" | "complete" | "trivia" | "obra";
 /** Pergunta completa (só o servidor guarda a resposta). */
 export type QuizPlan = {
   kind: QuizKind;
@@ -90,6 +93,9 @@ export type QuizPlan = {
   hide_song?: boolean; // prévia de uma música qualquer: a revelação não a identifica
   artist_like?: boolean; // conferir como nome de artista
   trivia_id?: string;
+  pack?: ObraPackId; // "Qual é a obra?": pacote da música
+  emoji?: string; // "Qual é a obra?": 🎬 / 🍥 / 📺 (dica na TV)
+  tipo?: "abertura" | "tema"; // novelas
 };
 /** O que todos veem da pergunta (sem a resposta até a revelação). */
 export type QuizState = {
@@ -109,6 +115,9 @@ export type QuizState = {
   answer?: string; // revelação
   correct?: number; // revelação (alternativas)
   counts?: number[]; // revelação (alternativas): quantos times escolheram cada uma
+  pack?: ObraPackId; // "Qual é a obra?"
+  emoji?: string; // "Qual é a obra?": dica do tipo de obra
+  tipo?: "abertura" | "tema"; // "Qual é a obra?" (novelas), só na revelação
 };
 /** "Um time por vez": de quem é a vez nesta rodada. */
 export type TurnState = { owner: string; team: string; order: string[]; tried: string[]; factor: number };

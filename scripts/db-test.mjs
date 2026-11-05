@@ -1207,6 +1207,61 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   ({ r: or } = await cur(oc));
   assert.equal(or.mode, "classic", "pergunta que não serve para o aberto cai em outro modo");
   console.log("ok quiz aberto");
+
+  // "Qual é a obra?": joga como o clássico, mas a resposta é a obra
+  {
+    const s0 = await rpc("npl_get_state", (await rpc("npl_create_room", OWNER, { obraPacks: ["anime", "x", "anime"] })).code);
+    assert.deepEqual(s0.room.settings.obraPacks, ["anime"], "pacotes limpos");
+    const s1 = await rpc("npl_get_state", (await rpc("npl_create_room", OWNER, { obraPacks: [] })).code);
+    assert.deepEqual(s1.room.settings.obraPacks, ["cinema", "anime", "novelas"], "nenhum pacote = todos");
+
+    const { c: wc, teams: wt } = await mkRoom({ modePool: ["obra"], mode: "obra", penalty: 20, scoring: "artist_title" }, 2);
+    const obraQ = (obra, accept, extra = {}) => ({ kind: "obra", q: "Qual é a obra?", answer: obra, accept, pack: "cinema", emoji: "🎬", ...extra });
+    await rpc("npl_start_match", wc, OWNER, [
+      quizTrack(1, obraQ("Rocky III", ["Rocky III", "Rocky 3", "Rocky"]), "obra"),
+      quizTrack(2, obraQ("Pantanal", ["Pantanal"], { pack: "novelas", emoji: "📺", tipo: "abertura" }), "obra"),
+      quizTrack(3, null, "obra"),
+    ], 3);
+    let { s: ws, r: wr } = await cur(wc);
+    await rpc("npl_round_begin", wc, OWNER, wr.id, [], [0, 0, 0, 0, 0, 0], {});
+    ({ s: ws, r: wr } = await cur(wc));
+    assert.equal(wr.mode, "obra");
+    assert.deepEqual(wr.quiz, { kind: "obra", q: "Qual é a obra?", pack: "cinema", emoji: "🎬" }, "só o pacote aparece");
+    assert.ok(!JSON.stringify(ws).includes("Rocky"), "a obra não vaza");
+    assert.equal(wr.play_seq, 0, "toca com o Tocar, como o clássico");
+    await rpc("npl_play", wc, OWNER, wr.id, 1, false);
+    let wb = await rpc("npl_buzz", wc, P(90), wr.id);
+    let wa = await rpc("npl_submit_answer", wc, P(90), wb.attempt_id, "", "Q1");
+    assert.equal(wa.result, "wrong", "o nome da música não vale");
+    ({ s: ws } = await cur(wc));
+    assert.equal(ws.teams.find((t) => t.id === wt[0]).score, -20, "penalidade vale");
+    wb = await rpc("npl_buzz", wc, P(91), wr.id);
+    wa = await rpc("npl_submit_answer", wc, P(91), wb.attempt_id, "", "rocky 3");
+    assert.equal(wa.result, "correct", "nome aceito");
+    assert.equal(wa.points, 100, "vale como o clássico (sem metade do artista)");
+    ({ s: ws, r: wr } = await cur(wc));
+    assert.equal(wr.status, "revealed");
+    assert.equal(wr.quiz.answer, "Rocky III");
+    assert.equal(wr.found.title, "Rocky III");
+    assert.equal(wr.reveal.title, "Q1", "a música aparece na revelação");
+    // novela: tipo na revelação; "Quase!" com erro de digitação
+    await rpc("npl_next_round", wc, OWNER, 1);
+    ({ r: wr } = await cur(wc));
+    await rpc("npl_round_begin", wc, OWNER, wr.id, [], [0, 0, 0, 0, 0, 0], {});
+    await rpc("npl_play", wc, OWNER, wr.id, 1, false);
+    wb = await rpc("npl_buzz", wc, P(91), wr.id);
+    wa = await rpc("npl_submit_answer", wc, P(91), wb.attempt_id, "", "Pantanl");
+    assert.ok(["almost", "correct", "doubt"].includes(wa.result), `erro de digitação (${wa.result})`);
+    if (wa.result === "almost") wa = await rpc("npl_submit_answer", wc, P(91), wb.attempt_id, "", "Pantanal");
+    ({ r: wr } = await cur(wc));
+    assert.equal(wr.quiz.tipo, "abertura");
+    assert.equal(wr.quiz.answer, "Pantanal");
+    // sem dados da obra: vira clássico
+    await rpc("npl_next_round", wc, OWNER, 2);
+    ({ r: wr } = await cur(wc));
+    assert.equal(wr.mode, "classic", "faixa sem obra cai em outro modo");
+  }
+  console.log("ok qual é a obra");
 }
 
 // ---------- "Um time por vez" ----------

@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:db": "node scripts/db-test.mjs",
     "dev:fake-db": "node scripts/dev-supabase.mjs",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "resolver-pacotes": "node scripts/resolve-packs.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

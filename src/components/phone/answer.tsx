@@ -7,6 +7,7 @@ import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { formatSeconds, lateTaps, missingParts, teamById } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
+import { OBRA_ASK, obraOf } from "@/modes/obra/logic";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
 import type { PhoneCtx } from "./PhoneApp";
 import { teamLabel } from "@/lib/icons";
@@ -132,7 +133,7 @@ export function AnswerForm({
       <FoundLine state={state} round={round} />
       {almost && (
         <p className="npl-pop rounded-2xl bg-amber-400 px-4 py-3 font-display text-xl text-violet-950">
-          {round.mode === "continue" ? "Quase! Confira a linha e envie de novo." : isQuizMode(round.mode) ? "Quase! Confira a escrita e envie de novo." : <>Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.</>}
+          {round.mode === "continue" ? "Quase! Confira a linha e envie de novo." : isQuizMode(round.mode) || round.mode === "obra" ? "Quase! Confira a escrita e envie de novo." : <>Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.</>}
         </p>
       )}
       {need.artist && (
@@ -150,7 +151,7 @@ export function AnswerForm({
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder={round.mode === "continue" ? "Continue a letra…" : quizOf(round)?.year ? "Ano (ex.: 1994)" : isQuizMode(round.mode) ? "Sua resposta" : "Música"}
+          placeholder={round.mode === "continue" ? "Continue a letra…" : quizOf(round)?.year ? "Ano (ex.: 1994)" : isQuizMode(round.mode) ? "Sua resposta" : round.mode === "obra" ? (OBRA_ASK[obraOf(round)?.pack ?? ""] ?? "Nome da obra") : "Música"}
           inputMode={quizOf(round)?.year ? "numeric" : undefined}
           autoComplete="off"
           autoFocus={!need.artist}

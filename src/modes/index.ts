@@ -2,6 +2,7 @@ import { auctionMode } from "./auction";
 import { classicMode } from "./classic";
 import { continueMode } from "./continue";
 import { lyricsMode } from "./lyrics";
+import { obraMode } from "./obra";
 import { quizChoiceMode, quizOpenMode } from "./quiz";
 import type { ModeDef } from "./types";
 
@@ -13,6 +14,7 @@ export const MODES: Record<string, ModeDef> = {
   [continueMode.id]: continueMode,
   [quizOpenMode.id]: quizOpenMode,
   [quizChoiceMode.id]: quizChoiceMode,
+  [obraMode.id]: obraMode,
 };
 
 export const getMode = (id: string | null | undefined): ModeDef => MODES[id ?? ""] ?? classicMode;

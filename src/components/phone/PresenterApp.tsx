@@ -40,7 +40,7 @@ type Answer = {
   artist: string;
   artists: string[];
   line?: string | null;
-  quiz?: { q: string; answer: string; kind: string; hide_song?: boolean } | null;
+  quiz?: { q: string; answer: string; kind: string; hide_song?: boolean; accept?: string[]; tipo?: string; emoji?: string } | null;
 } | null;
 
 /** Celular do apresentador (estilo "Com apresentador"): ele não joga, só comanda. */
@@ -197,9 +197,13 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
       <p className="text-xs uppercase tracking-wide text-emerald-300">Resposta certa (só você vê)</p>
       {answer?.quiz && (
         <div className="mb-2 rounded-xl bg-yellow-300 px-3 py-2 text-violet-950">
-          <p className="text-sm">❓ {answer.quiz.q}</p>
+          <p className="text-sm">{answer.quiz.kind === "obra" ? `${answer.quiz.emoji ?? "🎭"} ${answer.quiz.q}` : `❓ ${answer.quiz.q}`}</p>
           <p className="font-display text-2xl font-bold">✅ {answer.quiz.answer} {!need.title && "✓"}</p>
           {answer.quiz.hide_song && <p className="text-xs">A música de fundo não tem relação com a pergunta (não é revelada).</p>}
+          {answer.quiz.kind === "obra" && (answer.quiz.accept?.length ?? 0) > 1 && (
+            <p className="text-xs">Também vale: {answer.quiz.accept!.filter((a) => a !== answer.quiz!.answer).join(" · ")}</p>
+          )}
+          {answer.quiz.tipo && <p className="text-xs">{answer.quiz.tipo === "abertura" ? "Abertura da novela" : "Tema da novela"}</p>}
         </div>
       )}
       {answer?.line && round.mode === "continue" && (
@@ -210,7 +214,7 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
       {answer ? (
         <>
           <p className="font-display text-2xl font-bold">
-            🎵 {answer.title} {!need.title && round.mode !== "continue" && !isQuizMode(round.mode) && <span className="text-emerald-300">✓</span>}
+            🎵 {answer.title} {!need.title && round.mode !== "continue" && round.mode !== "obra" && !isQuizMode(round.mode) && <span className="text-emerald-300">✓</span>}
           </p>
           <p className="font-display text-xl text-pink-200">
             🎤 {artistCredits(answer)}{" "}
@@ -262,7 +266,7 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo{pts(partPoints(round, "artist"))}</Button>
           )}
           {need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>{round.mode === "continue" || isQuizMode(round.mode) ? "✅ Acertou" : "🎵 Música certa"}{pts(partPoints(round, "title"))}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>{round.mode === "continue" || round.mode === "obra" || isQuizMode(round.mode) ? "✅ Acertou" : "🎵 Música certa"}{pts(partPoints(round, "title"))}</Button>
           )}
           {need.artist && need.title && (
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois{pts(partPoints(round, "artist") + partPoints(round, "title"))}</Button>
@@ -295,8 +299,8 @@ function DoubtCard({ state, attempt, answer, code, token }: { state: RoomState; 
   rows.push(
     roundMode === "continue"
       ? ["Linha", attempt.answer_title, answer?.line ?? "…", attempt.title_result]
-      : isQuizMode(roundMode)
-        ? ["Resposta", attempt.answer_title, answer?.quiz?.answer ?? "…", attempt.title_result]
+      : isQuizMode(roundMode) || roundMode === "obra"
+        ? [roundMode === "obra" ? "Obra" : "Resposta", attempt.answer_title, answer?.quiz?.answer ?? "…", attempt.title_result]
         : ["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result],
   );
   return (

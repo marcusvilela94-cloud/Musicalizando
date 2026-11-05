@@ -207,7 +207,7 @@ const titleOf = (t: { title_short?: string; title: string }) => stripSuffix(t.ti
 // ---------------------------------------------------------------------
 type Gen = (ctx: Ctx, t: PickedTrack, format: QuizFormat) => Promise<QuizPlan | null>;
 
-const GENERATORS: Record<Exclude<QuizKind, "trivia">, Gen> = {
+const GENERATORS: Record<Exclude<QuizKind, "trivia" | "obra">, Gen> = {
   // "Em que ano saiu esta música?" — ano corrigido; erradas: anos próximos
   async year(ctx, t) {
     const year = await ctx.cache.year(t.deezer_id);
@@ -540,7 +540,7 @@ export async function buildQuiz(req: QuizRequest): Promise<{ results: (({ quiz: 
       if (Date.now() - t0 > BUDGET_MS + 8000 && SLOW.includes(kind)) continue;
       let plan: QuizPlan | null = null;
       try {
-        plan = await GENERATORS[kind as Exclude<QuizKind, "trivia">](ctx, track, format);
+        plan = await GENERATORS[kind as Exclude<QuizKind, "trivia" | "obra">](ctx, track, format);
       } catch {
         plan = null;
       }

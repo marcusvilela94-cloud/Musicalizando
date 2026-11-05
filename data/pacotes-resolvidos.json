@@ -1,0 +1,2348 @@
+{
+  "versao": 1,
+  "gerado_em": "2026-11-05T16:55:23.466Z",
+  "pacotes": [
+    {
+      "id": "cinema",
+      "nome": "Cinema",
+      "emoji": "🎬",
+      "itens": [
+        {
+          "obra": "Titanic",
+          "aceitas": [
+            "Titanic"
+          ],
+          "musica": "My Heart Will Go On",
+          "artista": "Celine Dion",
+          "via": "principal",
+          "deezer_id": 14552280,
+          "title": "My Heart Will Go On (Love Theme from \"Titanic\")",
+          "title_short": "My Heart Will Go On",
+          "artist": "Céline Dion",
+          "artists": [
+            "Céline Dion"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/177346106112348e15ec4f9add0c1ef4/500x500-000000-80-0-0.jpg",
+          "album": "My Love Essential Collection"
+        },
+        {
+          "obra": "Star Wars",
+          "aceitas": [
+            "Star Wars",
+            "Guerra nas Estrelas"
+          ],
+          "musica": "Main Title (Star Wars)",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 8146534,
+          "title": "Main Title (From \"Star Wars\")",
+          "title_short": "Main Title (From \"Star Wars\")",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/d2e31d915f51925a9bc524499c7cf7c3/500x500-000000-80-0-0.jpg",
+          "album": "John Williams - Greatest Hits 1969-1999"
+        },
+        {
+          "obra": "Rocky",
+          "aceitas": [
+            "Rocky",
+            "Rocky, um Lutador",
+            "Rocky Balboa"
+          ],
+          "musica": "Gonna Fly Now",
+          "artista": "Bill Conti",
+          "via": "principal",
+          "deezer_id": 3169788,
+          "title": "Gonna Fly Now",
+          "title_short": "Gonna Fly Now",
+          "artist": "Bill Conti",
+          "artists": [
+            "Bill Conti"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4e306f44f57c477596143680e9c1dee7/500x500-000000-80-0-0.jpg",
+          "album": "Rocky II (Original Motion Picture Score)"
+        },
+        {
+          "obra": "Rocky III",
+          "aceitas": [
+            "Rocky III",
+            "Rocky 3",
+            "Rocky"
+          ],
+          "musica": "Eye of the Tiger",
+          "artista": "Survivor",
+          "via": "principal",
+          "deezer_id": 576431,
+          "title": "Eye of the Tiger",
+          "title_short": "Eye of the Tiger",
+          "artist": "Survivor",
+          "artists": [
+            "Survivor"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e66b5d3a40f69690c1633afb73cc590c/500x500-000000-80-0-0.jpg",
+          "album": "Rocky IV"
+        },
+        {
+          "obra": "Os Caça-Fantasmas",
+          "aceitas": [
+            "Os Caça-Fantasmas",
+            "Caça-Fantasmas",
+            "Ghostbusters"
+          ],
+          "musica": "Ghostbusters",
+          "artista": "Ray Parker Jr.",
+          "via": "principal",
+          "deezer_id": 128547767,
+          "title": "Ghostbusters",
+          "title_short": "Ghostbusters",
+          "artist": "Ray Parker, Jr.",
+          "artists": [
+            "Ray Parker, Jr."
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/21dcb3b081d70e0e676cfd1934e0cbdd/500x500-000000-80-0-0.jpg",
+          "album": "Ghostbusters (Original Motion Picture Soundtrack) (2016)"
+        },
+        {
+          "obra": "Top Gun",
+          "aceitas": [
+            "Top Gun",
+            "Top Gun: Ases Indomáveis"
+          ],
+          "musica": "Danger Zone",
+          "artista": "Kenny Loggins",
+          "via": "principal",
+          "deezer_id": 7675051,
+          "title": "Danger Zone (From \"Top Gun\" Original Soundtrack)",
+          "title_short": "Danger Zone",
+          "artist": "Kenny Loggins",
+          "artists": [
+            "Kenny Loggins"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/021a1143e9f19493379b8cf01fa1c7c5/500x500-000000-80-0-0.jpg",
+          "album": "Top Gun - Motion Picture Soundtrack (Special Expanded Edition)"
+        },
+        {
+          "obra": "Dirty Dancing",
+          "aceitas": [
+            "Dirty Dancing",
+            "Dirty Dancing: Ritmo Quente"
+          ],
+          "musica": "(I've Had) The Time of My Life",
+          "artista": "Bill Medley & Jennifer Warnes",
+          "via": "principal",
+          "deezer_id": 13147974,
+          "title": "(I've Had) The Time of My Life (Remastered 2003)",
+          "title_short": "(I've Had) The Time of My Life",
+          "artist": "Bill Medley & Jennifer Warnes",
+          "artists": [
+            "Bill Medley & Jennifer Warnes"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/93ab44c1da20d8f635f265f64bb08ab2/500x500-000000-80-0-0.jpg",
+          "album": "Ultimate Dirty Dancing - The Collector's Edition"
+        },
+        {
+          "obra": "O Guarda-Costas",
+          "aceitas": [
+            "O Guarda-Costas",
+            "Guarda-Costas",
+            "The Bodyguard"
+          ],
+          "musica": "I Will Always Love You",
+          "artista": "Whitney Houston",
+          "via": "principal",
+          "deezer_id": 7675403,
+          "title": "I Will Always Love You",
+          "title_short": "I Will Always Love You",
+          "artist": "Whitney Houston",
+          "artists": [
+            "Whitney Houston"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/d071ab8d81111be6434c2f2cf372ab13/500x500-000000-80-0-0.jpg",
+          "album": "The Bodyguard - Original Soundtrack Album"
+        },
+        {
+          "obra": "Ghost",
+          "aceitas": [
+            "Ghost",
+            "Ghost: Do Outro Lado da Vida"
+          ],
+          "musica": "Unchained Melody",
+          "artista": "The Righteous Brothers",
+          "via": "principal",
+          "deezer_id": 885544,
+          "title": "Unchained Melody",
+          "title_short": "Unchained Melody",
+          "artist": "The Righteous Brothers",
+          "artists": [
+            "The Righteous Brothers"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/341d2ff6e18789314303cb2073b8f9fb/500x500-000000-80-0-0.jpg",
+          "album": "The Collection"
+        },
+        {
+          "obra": "Os Embalos de Sábado à Noite",
+          "aceitas": [
+            "Os Embalos de Sábado à Noite",
+            "Embalos de Sábado à Noite",
+            "Saturday Night Fever"
+          ],
+          "musica": "Stayin' Alive",
+          "artista": "Bee Gees",
+          "via": "principal",
+          "deezer_id": 406815322,
+          "title": "Stayin' Alive",
+          "title_short": "Stayin' Alive",
+          "artist": "Bee Gees",
+          "artists": [
+            "Bee Gees"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/062e4071ebfc701e5f1ca935e69a0b5b/500x500-000000-80-0-0.jpg",
+          "album": "Staying Alive (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Footloose",
+          "aceitas": [
+            "Footloose",
+            "Footloose: Ritmo Louco"
+          ],
+          "musica": "Footloose",
+          "artista": "Kenny Loggins",
+          "via": "principal",
+          "deezer_id": 4155200162,
+          "title": "Footloose",
+          "title_short": "Footloose",
+          "artist": "Kenny Loggins",
+          "artists": [
+            "Kenny Loggins"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/790bbd96e8ed799f55abaa556f7c1c0b/500x500-000000-80-0-0.jpg",
+          "album": "Canciones del Verano de los 80"
+        },
+        {
+          "obra": "Flashdance",
+          "aceitas": [
+            "Flashdance",
+            "Flashdance: Em Ritmo de Embalo"
+          ],
+          "musica": "Flashdance... What a Feeling",
+          "artista": "Irene Cara",
+          "via": "principal",
+          "deezer_id": 3413905571,
+          "title": "Flashdance... What A Feeling",
+          "title_short": "Flashdance... What A Feeling",
+          "artist": "Irene Cara",
+          "artists": [
+            "Irene Cara"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4f48976de8ccc51e2906ee4c6ac61b8d/500x500-000000-80-0-0.jpg",
+          "album": "Flashdance... What A Feeling"
+        },
+        {
+          "obra": "O Rei Leão",
+          "aceitas": [
+            "O Rei Leão",
+            "Rei Leão",
+            "The Lion King"
+          ],
+          "musica": "Circle of Life",
+          "artista": "Carmen Twillie",
+          "via": "principal",
+          "deezer_id": 24307571,
+          "title": "Circle of Life",
+          "title_short": "Circle of Life",
+          "artist": "Carmen Twillie",
+          "artists": [
+            "Carmen Twillie"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/bc1d8aee799295e81943ff4b7878296d/500x500-000000-80-0-0.jpg",
+          "album": "The Lion King"
+        },
+        {
+          "obra": "Frozen",
+          "aceitas": [
+            "Frozen",
+            "Frozen: Uma Aventura Congelante"
+          ],
+          "musica": "Let It Go",
+          "artista": "Idina Menzel",
+          "via": "principal",
+          "deezer_id": 72371930,
+          "title": "Let It Go (From \"Frozen\"/Soundtrack Version)",
+          "title_short": "Let It Go",
+          "artist": "Idina Menzel",
+          "artists": [
+            "Idina Menzel"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f669aa7623ad8af5fbeb5a196346013a/500x500-000000-80-0-0.jpg",
+          "album": "Frozen (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Harry Potter",
+          "aceitas": [
+            "Harry Potter",
+            "Harry Potter e a Pedra Filosofal"
+          ],
+          "musica": "Hedwig's Theme",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 661779,
+          "title": "Hedwig's Theme",
+          "title_short": "Hedwig's Theme",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/1ffc104374f70b3b9333cddb8be6e180/500x500-000000-80-0-0.jpg",
+          "album": "Harry Potter and The Sorcerer's Stone Original Motion Picture Soundtrack"
+        },
+        {
+          "obra": "Piratas do Caribe",
+          "aceitas": [
+            "Piratas do Caribe",
+            "Pirates of the Caribbean"
+          ],
+          "musica": "He's a Pirate",
+          "artista": "Klaus Badelt",
+          "via": "principal",
+          "deezer_id": 25221341,
+          "title": "\"He's A Pirate\" End Title Theme from the Motion Picture \"Pirates of the Caribbean\"",
+          "title_short": "\"He's A Pirate\" End Title Theme from the Motion Picture \"Pirates of the Caribbean\"",
+          "artist": "Klaus Badelt",
+          "artists": [
+            "Klaus Badelt"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8c49167157efc7fea406c330a39248e9/500x500-000000-80-0-0.jpg",
+          "album": "\"He's A Pirate\"- End Title Theme from the Motion Picture \"Pirates Of The Caribbean, The Curse Of The Black Pearl\""
+        },
+        {
+          "obra": "Tubarão",
+          "aceitas": [
+            "Tubarão",
+            "Jaws"
+          ],
+          "musica": "Main Title (Theme from Jaws)",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 93631710,
+          "title": "Main Title (Theme From Jaws) (From \"Jaws\")",
+          "title_short": "Main Title (Theme From Jaws)",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/b9fa1bdd7e1607d034ba632d18b07e71/500x500-000000-80-0-0.jpg",
+          "album": "Jaws (Music From The Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Pulp Fiction",
+          "aceitas": [
+            "Pulp Fiction",
+            "Pulp Fiction: Tempo de Violência"
+          ],
+          "musica": "Misirlou",
+          "artista": "Dick Dale & His Del-Tones",
+          "via": "principal",
+          "deezer_id": 7680019,
+          "title": "Misirlou",
+          "title_short": "Misirlou",
+          "artist": "Dick Dale and His Del-Tones",
+          "artists": [
+            "Dick Dale and His Del-Tones"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/410b6aaf51eed1324c17db08cb157110/500x500-000000-80-0-0.jpg",
+          "album": "Greatest Hits 1961 - 1976"
+        },
+        {
+          "obra": "Armageddon",
+          "aceitas": [
+            "Armageddon"
+          ],
+          "musica": "I Don't Want to Miss a Thing",
+          "artista": "Aerosmith",
+          "via": "principal",
+          "deezer_id": 624823,
+          "title": "I Don't Want To Miss A Thing",
+          "title_short": "I Don't Want To Miss A Thing",
+          "artist": "Aerosmith",
+          "artists": [
+            "Aerosmith"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/82bb160fe7b46cca64dc989a4f5843d0/500x500-000000-80-0-0.jpg",
+          "album": "Armageddon - The Album"
+        },
+        {
+          "obra": "8 Mile",
+          "aceitas": [
+            "8 Mile",
+            "8 Mile: Rua das Ilusões"
+          ],
+          "musica": "Lose Yourself",
+          "artista": "Eminem",
+          "via": "principal",
+          "deezer_id": 103121202,
+          "title": "Lose Yourself (From \"8 Mile\")",
+          "title_short": "Lose Yourself (From \"8 Mile\")",
+          "artist": "Eminem",
+          "artists": [
+            "Eminem"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/572c482ba64339e66e03bd27f5b5aecd/500x500-000000-80-0-0.jpg",
+          "album": "Best Ever Soundtracks"
+        },
+        {
+          "obra": "Shrek",
+          "aceitas": [
+            "Shrek"
+          ],
+          "musica": "All Star",
+          "artista": "Smash Mouth",
+          "via": "principal",
+          "deezer_id": 917717,
+          "title": "All Star",
+          "title_short": "All Star",
+          "artist": "Smash Mouth",
+          "artists": [
+            "Smash Mouth"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/34a4542cb4e8a54639674ed6aab1bd65/500x500-000000-80-0-0.jpg",
+          "album": "All Star Smash Hits"
+        },
+        {
+          "obra": "Grease",
+          "aceitas": [
+            "Grease",
+            "Grease: Nos Tempos da Brilhantina",
+            "Nos Tempos da Brilhantina"
+          ],
+          "musica": "You're the One That I Want",
+          "artista": "John Travolta & Olivia Newton-John",
+          "via": "principal",
+          "deezer_id": 781563062,
+          "title": "You're The One That I Want (From “Grease”)",
+          "title_short": "You're The One That I Want",
+          "artist": "John Travolta",
+          "artists": [
+            "John Travolta"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/337355fa64d7bb7cb64dec282415488d/500x500-000000-80-0-0.jpg",
+          "album": "Grease (The Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "De Volta para o Futuro",
+          "aceitas": [
+            "De Volta para o Futuro",
+            "Back to the Future"
+          ],
+          "musica": "The Power of Love",
+          "artista": "Huey Lewis & The News",
+          "via": "principal",
+          "deezer_id": 2338633815,
+          "title": "The Power Of Love (From “Back To The Future” Soundtrack)",
+          "title_short": "The Power Of Love",
+          "artist": "Huey Lewis & The News",
+          "artists": [
+            "Huey Lewis & The News"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/6a728882e2893ef745ae7df43211cfb3/500x500-000000-80-0-0.jpg",
+          "album": "Dzień taty"
+        },
+        {
+          "obra": "Guardiões da Galáxia",
+          "aceitas": [
+            "Guardiões da Galáxia",
+            "Guardians of the Galaxy"
+          ],
+          "musica": "Hooked on a Feeling",
+          "artista": "Blue Swede",
+          "via": "principal",
+          "deezer_id": 3402413,
+          "title": "Hooked On A Feeling",
+          "title_short": "Hooked On A Feeling",
+          "artist": "Blue Swede",
+          "artists": [
+            "Blue Swede"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8de15d7cb4e643beed105999aedcda26/500x500-000000-80-0-0.jpg",
+          "album": "Hooked On A Feeling"
+        },
+        {
+          "obra": "Velozes e Furiosos 7",
+          "aceitas": [
+            "Velozes e Furiosos 7",
+            "Velozes e Furiosos",
+            "Furious 7"
+          ],
+          "musica": "See You Again",
+          "artista": "Wiz Khalifa feat. Charlie Puth",
+          "via": "principal",
+          "deezer_id": 95813354,
+          "title": "See You Again (feat. Charlie Puth)",
+          "title_short": "See You Again (feat. Charlie Puth)",
+          "artist": "Wiz Khalifa",
+          "artists": [
+            "Wiz Khalifa"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/9411ab46dfc749311f7bbfd7398b7251/500x500-000000-80-0-0.jpg",
+          "album": "See You Again (feat. Charlie Puth)"
+        },
+        {
+          "obra": "007",
+          "aceitas": [
+            "007",
+            "James Bond"
+          ],
+          "musica": "James Bond Theme",
+          "artista": "Monty Norman",
+          "via": "principal",
+          "deezer_id": 75672738,
+          "title": "James Bond Theme",
+          "title_short": "James Bond Theme",
+          "artist": "Monty Norman",
+          "artists": [
+            "Monty Norman"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/ed587cf7bc58405f5376399e6a5ccedc/500x500-000000-80-0-0.jpg",
+          "album": "Dr. No (Original Soundtrack) [1962]"
+        },
+        {
+          "obra": "O Poderoso Chefão",
+          "aceitas": [
+            "O Poderoso Chefão",
+            "Poderoso Chefão",
+            "The Godfather"
+          ],
+          "musica": "Love Theme from The Godfather",
+          "artista": "Nino Rota",
+          "via": "principal",
+          "deezer_id": 3040782,
+          "title": "Love Theme From \"The Godfather\"",
+          "title_short": "Love Theme From \"The Godfather\"",
+          "artist": "Nino Rota",
+          "artists": [
+            "Nino Rota"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/da97bd562a9b372bd3985990f7c1c24d/500x500-000000-80-0-0.jpg",
+          "album": "The Godfather (Music From The Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Jurassic Park",
+          "aceitas": [
+            "Jurassic Park",
+            "Jurassic Park: O Parque dos Dinossauros",
+            "Parque dos Dinossauros"
+          ],
+          "musica": "Theme from Jurassic Park",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 2296192,
+          "title": "Theme From Jurassic Park",
+          "title_short": "Theme From Jurassic Park",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/77506857ed567321d22145d0c05271fb/500x500-000000-80-0-0.jpg",
+          "album": "Jurassic Park"
+        },
+        {
+          "obra": "Indiana Jones",
+          "aceitas": [
+            "Indiana Jones",
+            "Os Caçadores da Arca Perdida"
+          ],
+          "musica": "Raiders March",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 518473892,
+          "title": "Raiders March",
+          "title_short": "Raiders March",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/7f05f822035b2330048ee84a73382975/500x500-000000-80-0-0.jpg",
+          "album": "Indiana Jones and the Kingdom of the Crystal Skull (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "E.T.: O Extraterrestre",
+          "aceitas": [
+            "E.T.: O Extraterrestre",
+            "E.T.",
+            "ET",
+            "O Extraterrestre"
+          ],
+          "musica": "Flying (Theme from E.T.)",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 124188420,
+          "title": "E.T. The Extraterrestrial: Flying",
+          "title_short": "E.T. The Extraterrestrial: Flying",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/26bb98c159647fb5ee5ebbe34fd11398/500x500-000000-80-0-0.jpg",
+          "album": "The High And The Mighty (A Century Of Flight)"
+        },
+        {
+          "obra": "Superman",
+          "aceitas": [
+            "Superman",
+            "Superman: O Filme"
+          ],
+          "musica": "Superman Theme",
+          "artista": "John Williams",
+          "via": "principal",
+          "deezer_id": 3369742241,
+          "title": "Superman - Main Theme (From “Superman: The Movie”)",
+          "title_short": "Superman - Main Theme",
+          "artist": "John Williams",
+          "artists": [
+            "John Williams"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e9b174f4b4eb5af1ec1af63917cec635/500x500-000000-80-0-0.jpg",
+          "album": "Superman The Movie (Original Motion Picture Score)"
+        },
+        {
+          "obra": "Os Vingadores",
+          "aceitas": [
+            "Os Vingadores",
+            "Vingadores",
+            "The Avengers",
+            "Avengers"
+          ],
+          "musica": "The Avengers",
+          "artista": "Alan Silvestri",
+          "via": "principal",
+          "deezer_id": 17840804,
+          "title": "The Avengers",
+          "title_short": "The Avengers",
+          "artist": "Alan Silvestri",
+          "artists": [
+            "Alan Silvestri"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c49b7714e3c4b75e7604c5a86524ec27/500x500-000000-80-0-0.jpg",
+          "album": "The Avengers (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "O Senhor dos Anéis",
+          "aceitas": [
+            "O Senhor dos Anéis",
+            "Senhor dos Anéis",
+            "The Lord of the Rings"
+          ],
+          "musica": "Concerning Hobbits",
+          "artista": "Howard Shore",
+          "via": "principal",
+          "deezer_id": 14628816,
+          "title": "Concerning Hobbits",
+          "title_short": "Concerning Hobbits",
+          "artist": "Howard Shore",
+          "artists": [
+            "Howard Shore"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c8e0799a199841a8181ca524373869bb/500x500-000000-80-0-0.jpg",
+          "album": "The Lord of the Rings: The Fellowship of the Ring (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Gladiador",
+          "aceitas": [
+            "Gladiador",
+            "Gladiator"
+          ],
+          "musica": "Now We Are Free",
+          "artista": "Hans Zimmer & Lisa Gerrard",
+          "via": "principal",
+          "deezer_id": 3055975,
+          "title": "Now We Are Free",
+          "title_short": "Now We Are Free",
+          "artist": "Lisa Gerrard",
+          "artists": [
+            "Lisa Gerrard"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e4a2b155bcfe69895de1eacfffcc9b70/500x500-000000-80-0-0.jpg",
+          "album": "Gladiator - Music From The Motion Picture"
+        },
+        {
+          "obra": "Interestelar",
+          "aceitas": [
+            "Interestelar",
+            "Interstellar"
+          ],
+          "musica": "Cornfield Chase",
+          "artista": "Hans Zimmer",
+          "via": "principal",
+          "deezer_id": 1137370842,
+          "title": "Cornfield Chase",
+          "title_short": "Cornfield Chase",
+          "artist": "Hans Zimmer",
+          "artists": [
+            "Hans Zimmer"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4193cfd449576b01d33adeb54c2589ce/500x500-000000-80-0-0.jpg",
+          "album": "Interstellar (Original Motion Picture Soundtrack) (Expanded Edition)"
+        },
+        {
+          "obra": "O Exterminador do Futuro",
+          "aceitas": [
+            "O Exterminador do Futuro",
+            "Exterminador do Futuro",
+            "The Terminator"
+          ],
+          "musica": "The Terminator Theme",
+          "artista": "Brad Fiedel",
+          "via": "principal",
+          "deezer_id": 889834852,
+          "title": "The Terminator Theme (Extended Version)",
+          "title_short": "The Terminator Theme (Extended Version)",
+          "artist": "Brad Fiedel",
+          "artists": [
+            "Brad Fiedel"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/99f6ab9b32e283db072c166625c2b499/500x500-000000-80-0-0.jpg",
+          "album": "The Terminator (Original Soundtrack Album)"
+        },
+        {
+          "obra": "Três Homens em Conflito",
+          "aceitas": [
+            "Três Homens em Conflito",
+            "O Bom, o Mau e o Feio",
+            "The Good, the Bad and the Ugly"
+          ],
+          "musica": "The Good, the Bad and the Ugly (Main Title)",
+          "artista": "Ennio Morricone",
+          "via": "principal",
+          "deezer_id": 63835534,
+          "title": "The Good the Bad and the Ugly",
+          "title_short": "The Good the Bad and the Ugly",
+          "artist": "Ennio Morricone",
+          "artists": [
+            "Ennio Morricone"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f09823ae7641c2261d464ef2d5d5bf89/500x500-000000-80-0-0.jpg",
+          "album": "The Good, The Bad & The Ugly"
+        },
+        {
+          "obra": "Carruagens de Fogo",
+          "aceitas": [
+            "Carruagens de Fogo",
+            "Chariots of Fire"
+          ],
+          "musica": "Chariots of Fire",
+          "artista": "Vangelis",
+          "via": "principal",
+          "deezer_id": 41319291,
+          "title": "Chariots Of Fire",
+          "title_short": "Chariots Of Fire",
+          "artist": "Vangelis",
+          "artists": [
+            "Vangelis"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/a2e4de79f8470c371143241659cdb9b0/500x500-000000-80-0-0.jpg",
+          "album": "Chariots Of Fire - The Play"
+        },
+        {
+          "obra": "Toy Story",
+          "aceitas": [
+            "Toy Story"
+          ],
+          "musica": "You've Got a Friend in Me",
+          "artista": "Randy Newman",
+          "via": "principal",
+          "deezer_id": 696962792,
+          "title": "You've Got a Friend in Me",
+          "title_short": "You've Got a Friend in Me",
+          "artist": "Randy Newman",
+          "artists": [
+            "Randy Newman"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8db611b3f6e9e3b846413fc566267cb2/500x500-000000-80-0-0.jpg",
+          "album": "Toy Story 4 (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "A Pequena Sereia",
+          "aceitas": [
+            "A Pequena Sereia",
+            "Pequena Sereia",
+            "The Little Mermaid"
+          ],
+          "musica": "Under the Sea",
+          "artista": "Samuel E. Wright",
+          "via": "principal",
+          "deezer_id": 145187392,
+          "title": "Under the Sea",
+          "title_short": "Under the Sea",
+          "artist": "Samuel E. Wright",
+          "artists": [
+            "Samuel E. Wright"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/af5e46eeee7bd76c205845efa56f9d10/500x500-000000-80-0-0.jpg",
+          "album": "The Little Mermaid Special Edition"
+        },
+        {
+          "obra": "Aladdin",
+          "aceitas": [
+            "Aladdin",
+            "Aladim"
+          ],
+          "musica": "A Whole New World",
+          "artista": "Brad Kane & Lea Salonga",
+          "via": "principal",
+          "deezer_id": 120917666,
+          "title": "A Whole New World",
+          "title_short": "A Whole New World",
+          "artist": "Lea Salonga",
+          "artists": [
+            "Lea Salonga"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c6d6541f3be22f43be5fc3754e955b33/500x500-000000-80-0-0.jpg",
+          "album": "Aladdin (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "A Bela e a Fera",
+          "aceitas": [
+            "A Bela e a Fera",
+            "Bela e a Fera",
+            "Beauty and the Beast"
+          ],
+          "musica": "Beauty and the Beast",
+          "artista": "Celine Dion & Peabo Bryson",
+          "via": "principal",
+          "deezer_id": 1016712,
+          "title": "Beauty and the Beast (from the Soundtrack \"Beauty and the Beast\")",
+          "title_short": "Beauty and the Beast",
+          "artist": "Céline Dion",
+          "artists": [
+            "Céline Dion"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/5dd129a19998692897324f90e17bf1b5/500x500-000000-80-0-0.jpg",
+          "album": "Celine Dion"
+        },
+        {
+          "obra": "Moana",
+          "aceitas": [
+            "Moana",
+            "Moana: Um Mar de Aventuras"
+          ],
+          "musica": "How Far I'll Go",
+          "artista": "Auli'i Cravalho",
+          "via": "principal",
+          "deezer_id": 136340812,
+          "title": "How Far I'll Go (Reprise)",
+          "title_short": "How Far I'll Go",
+          "artist": "Auli'i Cravalho",
+          "artists": [
+            "Auli'i Cravalho"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8cd3bdbd08dac055f2fbaeb6115f552e/500x500-000000-80-0-0.jpg",
+          "album": "Moana (Original Motion Picture Soundtrack/Deluxe Edition)"
+        },
+        {
+          "obra": "Encanto",
+          "aceitas": [
+            "Encanto"
+          ],
+          "musica": "We Don't Talk About Bruno",
+          "artista": "Carolina Gaitán",
+          "via": "principal",
+          "deezer_id": 1550821762,
+          "title": "We Don't Talk About Bruno",
+          "title_short": "We Don't Talk About Bruno",
+          "artist": "Carolina Gaitán - La Gaita",
+          "artists": [
+            "Carolina Gaitán - La Gaita"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/544f44cd8f85e39223f29cec37a5446e/500x500-000000-80-0-0.jpg",
+          "album": "Encanto (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Nasce uma Estrela",
+          "aceitas": [
+            "Nasce uma Estrela",
+            "A Star Is Born"
+          ],
+          "musica": "Shallow",
+          "artista": "Lady Gaga & Bradley Cooper",
+          "via": "principal",
+          "deezer_id": 561856742,
+          "title": "Shallow",
+          "title_short": "Shallow",
+          "artist": "Lady Gaga",
+          "artists": [
+            "Lady Gaga"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/88a8288e14f61ffa39c14ac2ef9210d8/500x500-000000-80-0-0.jpg",
+          "album": "A Star Is Born Soundtrack"
+        },
+        {
+          "obra": "Uma Linda Mulher",
+          "aceitas": [
+            "Uma Linda Mulher",
+            "Pretty Woman"
+          ],
+          "musica": "Oh, Pretty Woman",
+          "artista": "Roy Orbison",
+          "via": "principal",
+          "deezer_id": 78033230,
+          "title": "Oh, Pretty Woman",
+          "title_short": "Oh, Pretty Woman",
+          "artist": "Roy Orbison",
+          "artists": [
+            "Roy Orbison"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/057141cf6b44141b44cbda46b2d38a10/500x500-000000-80-0-0.jpg",
+          "album": "Oh, Pretty Woman"
+        },
+        {
+          "obra": "Kill Bill",
+          "aceitas": [
+            "Kill Bill"
+          ],
+          "musica": "Bang Bang (My Baby Shot Me Down)",
+          "artista": "Nancy Sinatra",
+          "via": "principal",
+          "deezer_id": 1110233612,
+          "title": "Bang Bang",
+          "title_short": "Bang Bang",
+          "artist": "Nancy Sinatra",
+          "artists": [
+            "Nancy Sinatra"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4efbfb8855b2fd1a68ea125a106d55f4/500x500-000000-80-0-0.jpg",
+          "album": "Start Walkin' 1965-1976"
+        },
+        {
+          "obra": "Trainspotting",
+          "aceitas": [
+            "Trainspotting",
+            "Trainspotting: Sem Limites"
+          ],
+          "musica": "Born Slippy .NUXX",
+          "artista": "Underworld",
+          "via": "principal",
+          "deezer_id": 82265248,
+          "title": "Born Slippy (Nuxx)",
+          "title_short": "Born Slippy (Nuxx)",
+          "artist": "Underworld",
+          "artists": [
+            "Underworld"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/97460d8b65336a11623fb223930e74d0/500x500-000000-80-0-0.jpg",
+          "album": "1992 - 2012"
+        },
+        {
+          "obra": "Clube dos Cinco",
+          "aceitas": [
+            "Clube dos Cinco",
+            "The Breakfast Club"
+          ],
+          "musica": "Don't You (Forget About Me)",
+          "artista": "Simple Minds",
+          "via": "principal",
+          "deezer_id": 3158973,
+          "title": "Don't You (Forget About Me)",
+          "title_short": "Don't You (Forget About Me)",
+          "artist": "Simple Minds",
+          "artists": [
+            "Simple Minds"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f8d92ff8aa4534c9f7261943f3f27cf3/500x500-000000-80-0-0.jpg",
+          "album": "Themes - Volume 2"
+        },
+        {
+          "obra": "Karatê Kid",
+          "aceitas": [
+            "Karatê Kid",
+            "Karatê Kid: A Hora da Verdade"
+          ],
+          "musica": "You're the Best",
+          "artista": "Joe Esposito",
+          "via": "principal",
+          "deezer_id": 14113314,
+          "title": "You're The Best",
+          "title_short": "You're The Best",
+          "artist": "Joe \"Bean\" Esposito",
+          "artists": [
+            "Joe \"Bean\" Esposito"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/aaf7c8171614eb57e1aa7bab2e73b8e5/500x500-000000-80-0-0.jpg",
+          "album": "The Karate Kid: The Original Motion Picture Soundtrack"
+        },
+        {
+          "obra": "MIB: Homens de Preto",
+          "aceitas": [
+            "MIB: Homens de Preto",
+            "MIB",
+            "Homens de Preto",
+            "Men in Black"
+          ],
+          "musica": "Men in Black",
+          "artista": "Will Smith",
+          "via": "principal",
+          "deezer_id": 626417,
+          "title": "Men In Black (From \"Men In Black\" Soundtrack)",
+          "title_short": "Men In Black",
+          "artist": "Will Smith",
+          "artists": [
+            "Will Smith"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e06e37cd6c0b10dde07ff71b4a95fc2a/500x500-000000-80-0-0.jpg",
+          "album": "Greatest Hits"
+        },
+        {
+          "obra": "Homem-Aranha no Aranhaverso",
+          "aceitas": [
+            "Homem-Aranha no Aranhaverso",
+            "Aranhaverso",
+            "Spider-Man: Into the Spider-Verse",
+            "Spider-Man"
+          ],
+          "musica": "Sunflower",
+          "artista": "Post Malone & Swae Lee",
+          "via": "principal",
+          "deezer_id": 602456552,
+          "title": "Sunflower (Spider-Man: Into the Spider-Verse)",
+          "title_short": "Sunflower",
+          "artist": "Post Malone",
+          "artists": [
+            "Post Malone"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/1aa3dfe91b3e5d3bc71eca6b6e9c8d39/500x500-000000-80-0-0.jpg",
+          "album": "Spider-Man: Into the Spider-Verse (Soundtrack From & Inspired by the Motion Picture)"
+        },
+        {
+          "obra": "Barbie",
+          "aceitas": [
+            "Barbie"
+          ],
+          "musica": "What Was I Made For?",
+          "artista": "Billie Eilish",
+          "via": "principal",
+          "deezer_id": 2366043655,
+          "title": "What Was I Made For? [From The Motion Picture \"Barbie\"]",
+          "title_short": "What Was I Made For? [From The Motion Picture \"Barbie\"]",
+          "artist": "Billie Eilish",
+          "artists": [
+            "Billie Eilish"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/2562b8d68b75635bb2d4b92dc7ed9ab5/500x500-000000-80-0-0.jpg",
+          "album": "What Was I Made For? [From The Motion Picture \"Barbie\"]"
+        },
+        {
+          "obra": "Cinquenta Tons de Cinza",
+          "aceitas": [
+            "Cinquenta Tons de Cinza",
+            "50 Tons de Cinza",
+            "Fifty Shades of Grey"
+          ],
+          "musica": "Love Me Like You Do",
+          "artista": "Ellie Goulding",
+          "via": "principal",
+          "deezer_id": 111780476,
+          "title": "Love Me Like You Do (From \"Fifty Shades Of Grey\")",
+          "title_short": "Love Me Like You Do",
+          "artist": "Ellie Goulding",
+          "artists": [
+            "Ellie Goulding"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/a4f27af1979fea932093403aa14e549c/500x500-000000-80-0-0.jpg",
+          "album": "Delirium (Deluxe)"
+        },
+        {
+          "obra": "O Mágico de Oz",
+          "aceitas": [
+            "O Mágico de Oz",
+            "Mágico de Oz",
+            "The Wizard of Oz"
+          ],
+          "musica": "Over the Rainbow",
+          "artista": "Judy Garland",
+          "via": "principal",
+          "deezer_id": 523060,
+          "title": "Over the Rainbow",
+          "title_short": "Over the Rainbow",
+          "artist": "Judy Garland",
+          "artists": [
+            "Judy Garland"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8eb2b173f5385d570502d3882282589e/500x500-000000-80-0-0.jpg",
+          "album": "Pigskin Parade & The Wizard of Oz (1936 & 1939)"
+        },
+        {
+          "obra": "Bonequinha de Luxo",
+          "aceitas": [
+            "Bonequinha de Luxo",
+            "Breakfast at Tiffany's"
+          ],
+          "musica": "Moon River",
+          "artista": "Audrey Hepburn",
+          "via": "principal",
+          "deezer_id": 3141854111,
+          "title": "Moon River",
+          "title_short": "Moon River",
+          "artist": "Audrey Hepburn",
+          "artists": [
+            "Audrey Hepburn"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/b996772786335f11863571ad0d2ffa00/500x500-000000-80-0-0.jpg",
+          "album": "Essential Classics, Vol. 388: Audrey Hepburn"
+        },
+        {
+          "obra": "Cantando na Chuva",
+          "aceitas": [
+            "Cantando na Chuva",
+            "Singin' in the Rain"
+          ],
+          "musica": "Singin' in the Rain",
+          "artista": "Gene Kelly",
+          "via": "principal",
+          "deezer_id": 1590291672,
+          "title": "Singin' in the Rain",
+          "title_short": "Singin' in the Rain",
+          "artist": "Gene Kelly",
+          "artists": [
+            "Gene Kelly"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f5f8392008747650023b9e2ce72ab30c/500x500-000000-80-0-0.jpg",
+          "album": "Song & Dance Man"
+        }
+      ]
+    },
+    {
+      "id": "anime",
+      "nome": "Anime",
+      "emoji": "🍥",
+      "itens": [
+        {
+          "obra": "Naruto Shippuden",
+          "aceitas": [
+            "Naruto Shippuden",
+            "Naruto"
+          ],
+          "musica": "Blue Bird",
+          "artista": "Ikimono-gakari",
+          "via": "principal",
+          "deezer_id": 121134202,
+          "title": "Blue Bird",
+          "title_short": "Blue Bird",
+          "artist": "Ikimonogakari",
+          "artists": [
+            "Ikimonogakari"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4e21e5785cc9099ee2b464dab6ed273c/500x500-000000-80-0-0.jpg",
+          "album": "Chou Ikimonobakari Tennen Kinen Members Best Selection"
+        },
+        {
+          "obra": "Naruto Shippuden",
+          "aceitas": [
+            "Naruto Shippuden",
+            "Naruto"
+          ],
+          "musica": "Silhouette",
+          "artista": "KANA-BOON",
+          "via": "principal",
+          "deezer_id": 976040302,
+          "title": "Silhouette",
+          "title_short": "Silhouette",
+          "artist": "KANA-BOON",
+          "artists": [
+            "KANA-BOON"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/354c1fcd1648db95971b55a3fb110055/500x500-000000-80-0-0.jpg",
+          "album": "Silhouette"
+        },
+        {
+          "obra": "Demon Slayer",
+          "aceitas": [
+            "Demon Slayer",
+            "Kimetsu no Yaiba"
+          ],
+          "musica": "Gurenge",
+          "artista": "LiSA",
+          "via": "principal",
+          "deezer_id": 1093334492,
+          "title": "Gurenge",
+          "title_short": "Gurenge",
+          "artist": "LiSA",
+          "artists": [
+            "LiSA"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/1f52bcd67ac5393123b3a272ceec5a5c/500x500-000000-80-0-0.jpg",
+          "album": "LEO-NiNE"
+        },
+        {
+          "obra": "Attack on Titan",
+          "aceitas": [
+            "Attack on Titan",
+            "Shingeki no Kyojin",
+            "Ataque dos Titãs"
+          ],
+          "musica": "Guren no Yumiya",
+          "artista": "Linked Horizon",
+          "via": "principal",
+          "deezer_id": 472698952,
+          "title": "Guren No Yumiya",
+          "title_short": "Guren No Yumiya",
+          "artist": "Linked Horizon",
+          "artists": [
+            "Linked Horizon"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4d41019393b7b8e0eb1c69d7b4173ac1/500x500-000000-80-0-0.jpg",
+          "album": "Jiyuu Eno Shingeki"
+        },
+        {
+          "obra": "Tokyo Ghoul",
+          "aceitas": [
+            "Tokyo Ghoul"
+          ],
+          "musica": "unravel",
+          "artista": "TK from Ling tosite sigure",
+          "via": "principal",
+          "deezer_id": 975968052,
+          "title": "Unravel",
+          "title_short": "Unravel",
+          "artist": "TK from Ling tosite sigure",
+          "artists": [
+            "TK from Ling tosite sigure"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/61405c13e00050dd0aed08aa92199d98/500x500-000000-80-0-0.jpg",
+          "album": "Unravel"
+        },
+        {
+          "obra": "Death Note",
+          "aceitas": [
+            "Death Note"
+          ],
+          "musica": "the WORLD",
+          "artista": "Nightmare",
+          "via": "principal",
+          "deezer_id": 2665292502,
+          "title": "the WORLD (TV Size)",
+          "title_short": "the WORLD",
+          "artist": "Nightmare",
+          "artists": [
+            "Nightmare"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/933b657e2d22d77556bb3da3bb069e2f/500x500-000000-80-0-0.jpg",
+          "album": "DEATH NOTE Original Soundtrack"
+        },
+        {
+          "obra": "Fullmetal Alchemist: Brotherhood",
+          "aceitas": [
+            "Fullmetal Alchemist: Brotherhood",
+            "Fullmetal Alchemist",
+            "FMA"
+          ],
+          "musica": "Again",
+          "artista": "YUI",
+          "via": "principal",
+          "deezer_id": 975952742,
+          "title": "Again",
+          "title_short": "Again",
+          "artist": "YUI",
+          "artists": [
+            "YUI"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/80306b5b01aa8590462233004add3ca1/500x500-000000-80-0-0.jpg",
+          "album": "again"
+        },
+        {
+          "obra": "Jujutsu Kaisen",
+          "aceitas": [
+            "Jujutsu Kaisen"
+          ],
+          "musica": "Kaikai Kitan",
+          "artista": "Eve",
+          "via": "principal",
+          "deezer_id": 1143848452,
+          "title": "Kaikai Kitan",
+          "title_short": "Kaikai Kitan",
+          "artist": "Eve",
+          "artists": [
+            "Eve"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/eedf6e0637c549f523c3e660c82e94d0/500x500-000000-80-0-0.jpg",
+          "album": "Kaikai Kitan"
+        },
+        {
+          "obra": "Chainsaw Man",
+          "aceitas": [
+            "Chainsaw Man"
+          ],
+          "musica": "KICK BACK",
+          "artista": "Kenshi Yonezu",
+          "via": "principal",
+          "deezer_id": 1946911957,
+          "title": "KICK BACK",
+          "title_short": "KICK BACK",
+          "artist": "Kenshi Yonezu",
+          "artists": [
+            "Kenshi Yonezu"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/219b98615e49c9df44727bc3d9d57c8e/500x500-000000-80-0-0.jpg",
+          "album": "KICK BACK"
+        },
+        {
+          "obra": "Spy x Family",
+          "aceitas": [
+            "Spy x Family",
+            "Spy Family"
+          ],
+          "musica": "Mixed Nuts",
+          "artista": "Official HIGE DANdism",
+          "via": "principal",
+          "deezer_id": 1701852587,
+          "title": "Mixed Nuts",
+          "title_short": "Mixed Nuts",
+          "artist": "OFFICIAL HIGE DANDISM",
+          "artists": [
+            "OFFICIAL HIGE DANDISM"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/b91aef7d2d29861d4ecee575c491a910/500x500-000000-80-0-0.jpg",
+          "album": "Mixed Nuts"
+        },
+        {
+          "obra": "Oshi no Ko",
+          "aceitas": [
+            "Oshi no Ko"
+          ],
+          "musica": "Idol",
+          "artista": "YOASOBI",
+          "via": "principal",
+          "deezer_id": 2210493097,
+          "title": "アイドル",
+          "title_short": "アイドル",
+          "artist": "YOASOBI",
+          "artists": [
+            "YOASOBI"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c028acc15f911c6ca3ff821abbb64aa3/500x500-000000-80-0-0.jpg",
+          "album": "アイドル"
+        },
+        {
+          "obra": "One Piece",
+          "aceitas": [
+            "One Piece"
+          ],
+          "musica": "We Are!",
+          "artista": "Hiroshi Kitadani",
+          "via": "principal",
+          "deezer_id": 3033808841,
+          "title": "We Are!",
+          "title_short": "We Are!",
+          "artist": "Hiroshi Kitadani",
+          "artists": [
+            "Hiroshi Kitadani"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/5d3a3dc91c621e8fcb5f3fffe73c3843/500x500-000000-80-0-0.jpg",
+          "album": "We Are! (ONE PIECE Opening Theme)"
+        },
+        {
+          "obra": "Cowboy Bebop",
+          "aceitas": [
+            "Cowboy Bebop"
+          ],
+          "musica": "Tank!",
+          "artista": "Seatbelts",
+          "via": "principal",
+          "deezer_id": 1006888182,
+          "title": "Tank!",
+          "title_short": "Tank!",
+          "artist": "Seatbelts",
+          "artists": [
+            "Seatbelts"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/23bda74c6dfc6697340f56936f237858/500x500-000000-80-0-0.jpg",
+          "album": "COWBOY BEBOP (Original Motion Picture Soundtrack)"
+        },
+        {
+          "obra": "Bleach",
+          "aceitas": [
+            "Bleach"
+          ],
+          "musica": "Asterisk",
+          "artista": "ORANGE RANGE",
+          "via": "principal",
+          "deezer_id": 975900332,
+          "title": "*Asterisk",
+          "title_short": "*Asterisk",
+          "artist": "ORANGE RANGE",
+          "artists": [
+            "ORANGE RANGE"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/5b0881a3302492b3f6f1cd51b4743da0/500x500-000000-80-0-0.jpg",
+          "album": "* Asterisk"
+        },
+        {
+          "obra": "Hunter x Hunter",
+          "aceitas": [
+            "Hunter x Hunter",
+            "Hunter Hunter"
+          ],
+          "musica": "departure!",
+          "artista": "Masatoshi Ono",
+          "via": "principal",
+          "deezer_id": 2665357712,
+          "title": "departure!",
+          "title_short": "departure!",
+          "artist": "Masatoshi Ono",
+          "artists": [
+            "Masatoshi Ono"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/b5be477a3194ca38053a2473ce2562eb/500x500-000000-80-0-0.jpg",
+          "album": "“HUNTER×HUNTER”Single"
+        },
+        {
+          "obra": "Dragon Ball Z",
+          "aceitas": [
+            "Dragon Ball Z",
+            "Dragon Ball",
+            "DBZ"
+          ],
+          "musica": "Cha-La Head-Cha-La",
+          "artista": "Hironobu Kageyama",
+          "via": "alternativa",
+          "deezer_id": 3424787401,
+          "title": "Chala Head Chala (feat. Rodrigo Rossi)",
+          "title_short": "Chala Head Chala (feat. Rodrigo Rossi)",
+          "artist": "YUYU20",
+          "artists": [
+            "YUYU20"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/25e46fda2471aae0a8451aa7c8836889/500x500-000000-80-0-0.jpg",
+          "album": "Outras Histórias | Vol.02"
+        },
+        {
+          "obra": "Os Cavaleiros do Zodíaco",
+          "aceitas": [
+            "Os Cavaleiros do Zodíaco",
+            "Cavaleiros do Zodíaco",
+            "Saint Seiya",
+            "CDZ"
+          ],
+          "musica": "Pegasus Fantasy",
+          "artista": "MAKE-UP",
+          "via": "principal",
+          "deezer_id": 2405101315,
+          "title": "ペガサス幻想 (21st century ver.)",
+          "title_short": "ペガサス幻想 (21st century ver.)",
+          "artist": "Make-up",
+          "artists": [
+            "Make-up"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/ceca041c0e64db120faccceaf22a3c37/500x500-000000-80-0-0.jpg",
+          "album": "The Voice from Yesterday"
+        },
+        {
+          "obra": "Pokémon",
+          "aceitas": [
+            "Pokémon"
+          ],
+          "musica": "Pokémon Theme",
+          "artista": "Jason Paige",
+          "via": "principal",
+          "deezer_id": 433396562,
+          "title": "Pokémon Theme-New Studio Recording",
+          "title_short": "Pokémon Theme-New Studio Recording",
+          "artist": "Jason Paige",
+          "artists": [
+            "Jason Paige"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/d3c52c8f0d16fcbc95260fada5fc1264/500x500-000000-80-0-0.jpg",
+          "album": "Pokémon Theme-New Studio Recording"
+        },
+        {
+          "obra": "Yu Yu Hakusho",
+          "aceitas": [
+            "Yu Yu Hakusho"
+          ],
+          "musica": "Hohoemi no Bakudan",
+          "artista": "Matsuko Mawatari",
+          "via": "principal",
+          "deezer_id": 1576042532,
+          "title": "微笑みの爆弾",
+          "title_short": "微笑みの爆弾",
+          "artist": "Mawatari Matsuko",
+          "artists": [
+            "Mawatari Matsuko"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/473d3017c2655762d7d99a195dc127b5/500x500-000000-80-0-0.jpg",
+          "album": "Hohoemi No Bakudan / Unbalance Na Kiss Wo Shite"
+        },
+        {
+          "obra": "Dragon Ball",
+          "aceitas": [
+            "Dragon Ball"
+          ],
+          "musica": "Makafushigi Adventure!",
+          "artista": "Hiroki Takahashi",
+          "via": "principal",
+          "deezer_id": 3023051121,
+          "title": "摩訶不思議アドベンチャー! (2005 ver.)",
+          "title_short": "摩訶不思議アドベンチャー! (2005 ver.)",
+          "artist": "Takahashi Hiroki",
+          "artists": [
+            "Takahashi Hiroki"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/7ab6d1815e24326d5796e182bd358aba/500x500-000000-80-0-0.jpg",
+          "album": "Maka Fushigi Adventure! (2005 Ver.)"
+        },
+        {
+          "obra": "Sword Art Online",
+          "aceitas": [
+            "Sword Art Online",
+            "SAO"
+          ],
+          "musica": "crossing field",
+          "artista": "LiSA",
+          "via": "principal",
+          "deezer_id": 976378422,
+          "title": "Crossing Field",
+          "title_short": "Crossing Field",
+          "artist": "LiSA",
+          "artists": [
+            "LiSA"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/072fdab9f696f68a62bd271c113e0169/500x500-000000-80-0-0.jpg",
+          "album": "LiSA BEST -Day"
+        },
+        {
+          "obra": "Fairy Tail",
+          "aceitas": [
+            "Fairy Tail"
+          ],
+          "musica": "Snow Fairy",
+          "artista": "FUNKIST",
+          "via": "principal",
+          "deezer_id": 369864211,
+          "title": "Snow Fairy",
+          "title_short": "Snow Fairy",
+          "artist": "FUNKIST",
+          "artists": [
+            "FUNKIST"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e4ce3657e42ae7a22cdee2687566305b/500x500-000000-80-0-0.jpg",
+          "album": "Tv Anime \"Fairy Tail\" Op & Ed Theme Songs Vol. 1"
+        },
+        {
+          "obra": "My Hero Academia",
+          "aceitas": [
+            "My Hero Academia",
+            "Boku no Hero Academia",
+            "Boku no Hero"
+          ],
+          "musica": "Peace Sign",
+          "artista": "Kenshi Yonezu",
+          "via": "principal",
+          "deezer_id": 1355416752,
+          "title": "Peace Sign",
+          "title_short": "Peace Sign",
+          "artist": "Kenshi Yonezu",
+          "artists": [
+            "Kenshi Yonezu"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/43486e7f1e15648bfe233f5f94baf5f0/500x500-000000-80-0-0.jpg",
+          "album": "Peace Sign"
+        },
+        {
+          "obra": "Haikyu!!",
+          "aceitas": [
+            "Haikyu!!"
+          ],
+          "musica": "Imagination",
+          "artista": "SPYAIR",
+          "via": "principal",
+          "deezer_id": 1439536642,
+          "title": "Imagination",
+          "title_short": "Imagination",
+          "artist": "Spyair",
+          "artists": [
+            "Spyair"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/954b15d9ff6539413ae63134a1c50e66/500x500-000000-80-0-0.jpg",
+          "album": "Best Of The Best"
+        },
+        {
+          "obra": "Code Geass",
+          "aceitas": [
+            "Code Geass"
+          ],
+          "musica": "COLORS",
+          "artista": "FLOW",
+          "via": "principal",
+          "deezer_id": 976202432,
+          "title": "Colors",
+          "title_short": "Colors",
+          "artist": "FLOW",
+          "artists": [
+            "FLOW"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4121aa99a053f9f594299a2c96340a05/500x500-000000-80-0-0.jpg",
+          "album": "COLORS"
+        },
+        {
+          "obra": "JoJo's Bizarre Adventure",
+          "aceitas": [
+            "JoJo's Bizarre Adventure",
+            "JoJo",
+            "JoJo no Kimyou na Bouken"
+          ],
+          "musica": "Sono Chi no Sadame",
+          "artista": "Hiroaki \"TOMMY\" Tominaga",
+          "via": "principal",
+          "deezer_id": 4381039551,
+          "title": "JOJO SONO CHINO SADAME",
+          "title_short": "JOJO SONO CHINO SADAME",
+          "artist": "Hiroaki Tommy Tominaga",
+          "artists": [
+            "Hiroaki Tommy Tominaga"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/d67c0a487dbafeac493e373add1d4d2c/500x500-000000-80-0-0.jpg",
+          "album": "JOJO SONO CHINO SADAME"
+        },
+        {
+          "obra": "Samurai X",
+          "aceitas": [
+            "Samurai X",
+            "Rurouni Kenshin"
+          ],
+          "musica": "Sobakasu",
+          "artista": "JUDY AND MARY",
+          "via": "principal",
+          "deezer_id": 975993252,
+          "title": "Sobakasu",
+          "title_short": "Sobakasu",
+          "artist": "Judy & Mary",
+          "artists": [
+            "Judy & Mary"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/e2c580be3497bd4ce87b7077bebd3420/500x500-000000-80-0-0.jpg",
+          "album": "Sobakasu"
+        },
+        {
+          "obra": "Sakura Card Captors",
+          "aceitas": [
+            "Sakura Card Captors",
+            "Cardcaptor Sakura",
+            "Sakura"
+          ],
+          "musica": "Catch You Catch Me",
+          "artista": "Gumi",
+          "via": "principal",
+          "deezer_id": 2116566277,
+          "title": "Catch You Catch Me",
+          "title_short": "Catch You Catch Me",
+          "artist": "GUMI",
+          "artists": [
+            "GUMI"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c701d5f28e13a73615d9ed3d2a70d863/500x500-000000-80-0-0.jpg",
+          "album": "CARDCAPTOR SAKURA SONG COLLECTION 1998.4-1999.2"
+        },
+        {
+          "obra": "Mob Psycho 100",
+          "aceitas": [
+            "Mob Psycho 100",
+            "Mob Psycho"
+          ],
+          "musica": "99",
+          "artista": "MOB CHOIR",
+          "via": "principal",
+          "deezer_id": 4381040161,
+          "title": "99",
+          "title_short": "99",
+          "artist": "Mob Choir",
+          "artists": [
+            "Mob Choir"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/dce90d4cedf8b157fb57d412c3c0f4a9/500x500-000000-80-0-0.jpg",
+          "album": "99"
+        },
+        {
+          "obra": "A Viagem de Chihiro",
+          "aceitas": [
+            "A Viagem de Chihiro",
+            "Chihiro",
+            "Spirited Away"
+          ],
+          "musica": "Always With Me",
+          "artista": "Youmi Kimura",
+          "via": "principal",
+          "deezer_id": 1120336172,
+          "title": "Always with Me",
+          "title_short": "Always with Me",
+          "artist": "Yumi Kimura",
+          "artists": [
+            "Yumi Kimura"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/45bba02202fd0ac42b6099bf93ec1e4d/500x500-000000-80-0-0.jpg",
+          "album": "Spirited Away Soundtrack"
+        },
+        {
+          "obra": "Meu Amigo Totoro",
+          "aceitas": [
+            "Meu Amigo Totoro",
+            "Totoro",
+            "My Neighbor Totoro"
+          ],
+          "musica": "My Neighbor Totoro",
+          "artista": "Azumi Inoue",
+          "via": "principal",
+          "deezer_id": 1120328792,
+          "title": "My Neighbor Totoro",
+          "title_short": "My Neighbor Totoro",
+          "artist": "Azumi Inoue",
+          "artists": [
+            "Azumi Inoue"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/405fe6a82718a2cc3e2271d1f5903f2d/500x500-000000-80-0-0.jpg",
+          "album": "My Neighbor Totoro Image Song Collection"
+        },
+        {
+          "obra": "Frieren",
+          "aceitas": [
+            "Frieren",
+            "Sousou no Frieren",
+            "Frieren e a Jornada para o Além"
+          ],
+          "musica": "Yuusha",
+          "artista": "YOASOBI",
+          "via": "principal",
+          "deezer_id": 2449469235,
+          "title": "勇者",
+          "title_short": "勇者",
+          "artist": "YOASOBI",
+          "artists": [
+            "YOASOBI"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/9a578950cc29c69692c464a3e70e1243/500x500-000000-80-0-0.jpg",
+          "album": "勇者"
+        },
+        {
+          "obra": "Dan Da Dan",
+          "aceitas": [
+            "Dan Da Dan",
+            "Dandadan"
+          ],
+          "musica": "Otonoke",
+          "artista": "Creepy Nuts",
+          "via": "principal",
+          "deezer_id": 3024903811,
+          "title": "Otonoke",
+          "title_short": "Otonoke",
+          "artist": "Creepy Nuts",
+          "artists": [
+            "Creepy Nuts"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/725e2fe052446f8928ada4036b4516d5/500x500-000000-80-0-0.jpg",
+          "album": "Otonoke"
+        }
+      ]
+    },
+    {
+      "id": "novelas",
+      "nome": "Novelas",
+      "emoji": "📺",
+      "itens": [
+        {
+          "obra": "Roque Santeiro",
+          "aceitas": [
+            "Roque Santeiro"
+          ],
+          "tipo": "abertura",
+          "musica": "Dona",
+          "artista": "Roupa Nova",
+          "via": "principal",
+          "deezer_id": 15419593,
+          "title": "Dona",
+          "title_short": "Dona",
+          "artist": "Roupa Nova",
+          "artists": [
+            "Roupa Nova"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c17cce3063318f2e3f952e793fe37123/500x500-000000-80-0-0.jpg",
+          "album": "Roupa Nova"
+        },
+        {
+          "obra": "Tieta",
+          "aceitas": [
+            "Tieta"
+          ],
+          "tipo": "abertura",
+          "musica": "Tieta",
+          "artista": "Luiz Caldas",
+          "via": "principal",
+          "deezer_id": 144393348,
+          "title": "Tieta",
+          "title_short": "Tieta",
+          "artist": "Luiz Caldas",
+          "artists": [
+            "Luiz Caldas"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/aadcb434c5deded233fa0130f03cee7f/500x500-000000-80-0-0.jpg",
+          "album": "Timbres"
+        },
+        {
+          "obra": "Vale Tudo",
+          "aceitas": [
+            "Vale Tudo"
+          ],
+          "tipo": "abertura",
+          "musica": "Brasil",
+          "artista": "Gal Costa",
+          "via": "principal",
+          "deezer_id": 65200579,
+          "title": "Brasil",
+          "title_short": "Brasil",
+          "artist": "Gal Costa",
+          "artists": [
+            "Gal Costa"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4a1598a2403b3b6b7ce7b57095b388f4/500x500-000000-80-0-0.jpg",
+          "album": "Pure... Brazil"
+        },
+        {
+          "obra": "Gabriela",
+          "aceitas": [
+            "Gabriela",
+            "Gabriela, Cravo e Canela"
+          ],
+          "tipo": "abertura",
+          "musica": "Modinha para Gabriela",
+          "artista": "Gal Costa",
+          "via": "principal",
+          "deezer_id": 112649720,
+          "title": "Modinha Para Gabriela",
+          "title_short": "Modinha Para Gabriela",
+          "artist": "Gal Costa",
+          "artists": [
+            "Gal Costa"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/3d156a62f97ac1b99248de8ed105dc4e/500x500-000000-80-0-0.jpg",
+          "album": "A Arte De Gal Costa"
+        },
+        {
+          "obra": "Dancin' Days",
+          "aceitas": [
+            "Dancin' Days",
+            "Dancing Days"
+          ],
+          "tipo": "abertura",
+          "musica": "Dancin' Days",
+          "artista": "As Frenéticas",
+          "via": "principal",
+          "deezer_id": 3870151,
+          "title": "Dancin' Days",
+          "title_short": "Dancin' Days",
+          "artist": "Frenéticas",
+          "artists": [
+            "Frenéticas"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/cea34f72e49341328f7b0e55da8c2b57/500x500-000000-80-0-0.jpg",
+          "album": "Sempre Frenéticas"
+        },
+        {
+          "obra": "Pantanal",
+          "aceitas": [
+            "Pantanal"
+          ],
+          "tipo": "abertura",
+          "musica": "Pantanal",
+          "artista": "Sagrado Coração da Terra",
+          "via": "principal",
+          "deezer_id": 99809452,
+          "title": "Pantanal",
+          "title_short": "Pantanal",
+          "artist": "Sagrado Coracao da Terra",
+          "artists": [
+            "Sagrado Coracao da Terra"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/5e71620b4060b0cb038db60998c3c95f/500x500-000000-80-0-0.jpg",
+          "album": "Farol da Liberdade"
+        },
+        {
+          "obra": "O Rei do Gado",
+          "aceitas": [
+            "O Rei do Gado",
+            "Rei do Gado"
+          ],
+          "tipo": "tema",
+          "musica": "Admirável Gado Novo",
+          "artista": "Zé Ramalho",
+          "via": "principal",
+          "deezer_id": 70097320,
+          "title": "Admirável Gado Novo",
+          "title_short": "Admirável Gado Novo",
+          "artist": "Zé Ramalho",
+          "artists": [
+            "Zé Ramalho"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/06f71fc46354c13952cb8e4f14840240/500x500-000000-80-0-0.jpg",
+          "album": "Box Zé Ramalho"
+        },
+        {
+          "obra": "Terra Nostra",
+          "aceitas": [
+            "Terra Nostra"
+          ],
+          "tipo": "abertura",
+          "musica": "Tormento d'Amore",
+          "artista": "Agnaldo Rayol e Charlotte",
+          "via": "principal",
+          "deezer_id": 13620595,
+          "title": "Tormento D'Amore",
+          "title_short": "Tormento D'Amore",
+          "artist": "Agnaldo Rayol",
+          "artists": [
+            "Agnaldo Rayol"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/ed2b7faab534b7a109a76116caeed2de/500x500-000000-80-0-0.jpg",
+          "album": "Tormento D'Amore"
+        },
+        {
+          "obra": "Mulheres Apaixonadas",
+          "aceitas": [
+            "Mulheres Apaixonadas"
+          ],
+          "tipo": "abertura",
+          "musica": "Pela Luz dos Olhos Teus",
+          "artista": "Tom Jobim e Miúcha",
+          "via": "principal",
+          "deezer_id": 14241287,
+          "title": "Pela Luz dos Olhos Teus Bonus Track",
+          "title_short": "Pela Luz dos Olhos Teus",
+          "artist": "Miucha",
+          "artists": [
+            "Miucha"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/aede60ac6484aac8645a60fac9623162/500x500-000000-80-0-0.jpg",
+          "album": "Miucha & Tom Jobim Vol. 1"
+        },
+        {
+          "obra": "Senhora do Destino",
+          "aceitas": [
+            "Senhora do Destino"
+          ],
+          "tipo": "abertura",
+          "musica": "Encontros e Despedidas",
+          "artista": "Maria Rita",
+          "via": "principal",
+          "deezer_id": 823145,
+          "title": "Encontros e despedidas",
+          "title_short": "Encontros e despedidas",
+          "artist": "Maria Rita",
+          "artists": [
+            "Maria Rita"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8fb82b24d281275ee6c2caf761af7aa9/500x500-000000-80-0-0.jpg",
+          "album": "Maria Rita - Portugal"
+        },
+        {
+          "obra": "Da Cor do Pecado",
+          "aceitas": [
+            "Da Cor do Pecado"
+          ],
+          "tipo": "abertura",
+          "musica": "Da Cor do Pecado",
+          "artista": "Luciana Mello",
+          "via": "principal",
+          "deezer_id": 4685621,
+          "title": "Da Cor Do Pecado",
+          "title_short": "Da Cor Do Pecado",
+          "artist": "Luciana Mello",
+          "artists": [
+            "Luciana Mello"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/b4ae21e13688a7d74aac60584d75539f/500x500-000000-80-0-0.jpg",
+          "album": "Luciana Mello"
+        },
+        {
+          "obra": "Caminho das Índias",
+          "aceitas": [
+            "Caminho das Índias"
+          ],
+          "tipo": "abertura",
+          "musica": "Beedi",
+          "artista": "Sukhwinder Singh e Sunidhi Chauhan",
+          "via": "principal",
+          "deezer_id": 15727950,
+          "title": "Beedi",
+          "title_short": "Beedi",
+          "artist": "Sukwinder Singh",
+          "artists": [
+            "Sukwinder Singh"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/8e7291f09204b12f33254e35168ad4ce/500x500-000000-80-0-0.jpg",
+          "album": "Trilha das Índias"
+        },
+        {
+          "obra": "Avenida Brasil",
+          "aceitas": [
+            "Avenida Brasil"
+          ],
+          "tipo": "abertura",
+          "musica": "Vem Dançar com Tudo",
+          "artista": "Robson Moura e Lino Krizz",
+          "via": "principal",
+          "deezer_id": 18191038,
+          "title": "Vem Dançar com Tudo (feat Lino Krizz)",
+          "title_short": "Vem Dançar com Tudo",
+          "artist": "Robson Moura",
+          "artists": [
+            "Robson Moura"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f5db7dbd23be6326eeec1b217c403913/500x500-000000-80-0-0.jpg",
+          "album": "Vem Dançar com Tudo (Vem Dançar Kuduro)"
+        },
+        {
+          "obra": "Cheias de Charme",
+          "aceitas": [
+            "Cheias de Charme"
+          ],
+          "tipo": "tema",
+          "musica": "Vida de Empreguete",
+          "artista": "Empreguetes",
+          "via": "principal",
+          "deezer_id": 61094792,
+          "title": "Vida De Empreguete",
+          "title_short": "Vida De Empreguete",
+          "artist": "Empreguetes",
+          "artists": [
+            "Empreguetes"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/eb90e19dbc4fd91c1f1e8cbc83275853/500x500-000000-80-0-0.jpg",
+          "album": "Vida De Empreguete - Single"
+        },
+        {
+          "obra": "Cheias de Charme",
+          "aceitas": [
+            "Cheias de Charme"
+          ],
+          "tipo": "abertura",
+          "musica": "Ex Mai Love",
+          "artista": "Gaby Amarantos",
+          "via": "principal",
+          "deezer_id": 2338524855,
+          "title": "Ex Mai Love",
+          "title_short": "Ex Mai Love",
+          "artist": "Gaby Amarantos",
+          "artists": [
+            "Gaby Amarantos"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/2aede6b5f59815df73890b93eaa72c2c/500x500-000000-80-0-0.jpg",
+          "album": "Treme"
+        },
+        {
+          "obra": "Escrava Isaura",
+          "aceitas": [
+            "Escrava Isaura",
+            "A Escrava Isaura"
+          ],
+          "tipo": "abertura",
+          "musica": "Retirantes",
+          "artista": "Dorival Caymmi",
+          "via": "principal",
+          "deezer_id": 2296838765,
+          "title": "Retirantes",
+          "title_short": "Retirantes",
+          "artist": "Dorival Caymmi",
+          "artists": [
+            "Dorival Caymmi"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/6b34f9c99652b811e2d20842c5dbbb1b/500x500-000000-80-0-0.jpg",
+          "album": "Músicas Da Trilha De Escrava Isaura"
+        },
+        {
+          "obra": "Brilhante",
+          "aceitas": [
+            "Brilhante"
+          ],
+          "tipo": "abertura",
+          "musica": "Luiza",
+          "artista": "Tom Jobim",
+          "via": "principal",
+          "deezer_id": 3149180,
+          "title": "Luiza",
+          "title_short": "Luiza",
+          "artist": "Antônio Carlos Jobim",
+          "artists": [
+            "Antônio Carlos Jobim"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/a70ea86c26b8176f2776ba4e75d3b8de/500x500-000000-80-0-0.jpg",
+          "album": "Passarim"
+        },
+        {
+          "obra": "Brega & Chique",
+          "aceitas": [
+            "Brega & Chique",
+            "Brega e Chique"
+          ],
+          "tipo": "abertura",
+          "musica": "Pelado",
+          "artista": "Ultraje a Rigor",
+          "via": "principal",
+          "deezer_id": 126748193,
+          "title": "Pelado",
+          "title_short": "Pelado",
+          "artist": "Ultraje A Rigor",
+          "artists": [
+            "Ultraje A Rigor"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/96c3ff54cb8f030472cd60e2af5af871/500x500-000000-80-0-0.jpg",
+          "album": "E-collection"
+        },
+        {
+          "obra": "Rainha da Sucata",
+          "aceitas": [
+            "Rainha da Sucata"
+          ],
+          "tipo": "abertura",
+          "musica": "Me Chama que Eu Vou",
+          "artista": "Sidney Magal",
+          "via": "principal",
+          "deezer_id": 15024248,
+          "title": "Me Chama Que Eu Vou",
+          "title_short": "Me Chama Que Eu Vou",
+          "artist": "Sidney Magal",
+          "artists": [
+            "Sidney Magal"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/5c94f758ea42fc1c46b6cf6f7af1c96d/500x500-000000-80-0-0.jpg",
+          "album": "Brilhantes - Magal"
+        },
+        {
+          "obra": "Deus nos Acuda",
+          "aceitas": [
+            "Deus nos Acuda"
+          ],
+          "tipo": "abertura",
+          "musica": "Canta Brasil",
+          "artista": "Gal Costa",
+          "via": "principal",
+          "deezer_id": 529710971,
+          "title": "Canta Brasil",
+          "title_short": "Canta Brasil",
+          "artist": "Gal Costa",
+          "artists": [
+            "Gal Costa"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/4b9cf4ec93d447e1ff2430e384b10479/500x500-000000-80-0-0.jpg",
+          "album": "Fantasia"
+        },
+        {
+          "obra": "Mulheres de Areia",
+          "aceitas": [
+            "Mulheres de Areia"
+          ],
+          "tipo": "abertura",
+          "musica": "Sexy Yemanjá",
+          "artista": "Pepeu Gomes",
+          "via": "principal",
+          "deezer_id": 14661568,
+          "title": "Sexy Yemanjá",
+          "title_short": "Sexy Yemanjá",
+          "artist": "Pepeu Gomes",
+          "artists": [
+            "Pepeu Gomes"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/cf76e65805f70a710e8bf20a1a41dad8/500x500-000000-80-0-0.jpg",
+          "album": "Sexy Iemanjá"
+        },
+        {
+          "obra": "Por Amor",
+          "aceitas": [
+            "Por Amor"
+          ],
+          "tipo": "abertura",
+          "musica": "Falando de Amor",
+          "artista": "Quarteto em Cy e MPB4",
+          "via": "principal",
+          "deezer_id": 3060852,
+          "title": "Falando De Amor",
+          "title_short": "Falando De Amor",
+          "artist": "MPB4",
+          "artists": [
+            "MPB4"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/d6c777268d58222dc8993a77e638fd9d/500x500-000000-80-0-0.jpg",
+          "album": "20 Grandes Sucessos De Quarteto Em Cy & Mpb-4"
+        },
+        {
+          "obra": "Torre de Babel",
+          "aceitas": [
+            "Torre de Babel"
+          ],
+          "tipo": "abertura",
+          "musica": "Pra Você",
+          "artista": "Gal Costa",
+          "via": "principal",
+          "deezer_id": 3571320001,
+          "title": "Prá Você",
+          "title_short": "Prá Você",
+          "artist": "Gal Costa",
+          "artists": [
+            "Gal Costa"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/ec4fcdce4c2f1d086e0d1f25ed55c3c3/500x500-000000-80-0-0.jpg",
+          "album": "RCA 100 Anos De Música - Gal Costa"
+        },
+        {
+          "obra": "Laços de Família",
+          "aceitas": [
+            "Laços de Família"
+          ],
+          "tipo": "abertura",
+          "musica": "Corcovado",
+          "artista": "Stan Getz, João Gilberto e Astrud Gilberto",
+          "via": "principal",
+          "deezer_id": 661515852,
+          "title": "Corcovado (Quiet Nights Of Quiet Stars)",
+          "title_short": "Corcovado (Quiet Nights Of Quiet Stars)",
+          "artist": "Stan Getz",
+          "artists": [
+            "Stan Getz"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/34aaade8f6fb74e729f5eb881a0b8888/500x500-000000-80-0-0.jpg",
+          "album": "Gold"
+        },
+        {
+          "obra": "Páginas da Vida",
+          "aceitas": [
+            "Páginas da Vida"
+          ],
+          "tipo": "abertura",
+          "musica": "Sei Lá (A Vida Tem Sempre Razão)",
+          "artista": "Tom Jobim, Chico Buarque e Miúcha",
+          "via": "principal",
+          "deezer_id": 79878498,
+          "title": "Sei la, A Vida Tem Sempre Razao",
+          "title_short": "Sei la, A Vida Tem Sempre Razao",
+          "artist": "Antônio Carlos Jobim & Miúcha",
+          "artists": [
+            "Antônio Carlos Jobim & Miúcha"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/19f786f0deb51edab40bfb2ac4ba6ba7/500x500-000000-80-0-0.jpg",
+          "album": "Baladas Amándote Con Bossa Vol 2"
+        },
+        {
+          "obra": "Malhação",
+          "aceitas": [
+            "Malhação"
+          ],
+          "tipo": "abertura",
+          "musica": "Paraíso Proibido",
+          "artista": "Strike",
+          "via": "principal",
+          "deezer_id": 96189844,
+          "title": "Paraíso Proibido",
+          "title_short": "Paraíso Proibido",
+          "artist": "Strike",
+          "artists": [
+            "Strike"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/bb21ec39970530499b5de95157941fe8/500x500-000000-80-0-0.jpg",
+          "album": "Desvio de Conduta"
+        },
+        {
+          "obra": "Paraíso",
+          "aceitas": [
+            "Paraíso"
+          ],
+          "tipo": "abertura",
+          "musica": "Deus e Eu no Sertão",
+          "artista": "Victor & Leo",
+          "via": "principal",
+          "deezer_id": 13245353,
+          "title": "Deus e Eu no Sertão",
+          "title_short": "Deus e Eu no Sertão",
+          "artist": "Victor & Leo",
+          "artists": [
+            "Victor & Leo"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/7583aaebda03c91e1e18fb4fa865c962/500x500-000000-80-0-0.jpg",
+          "album": "Borboletas"
+        },
+        {
+          "obra": "Velho Chico",
+          "aceitas": [
+            "Velho Chico"
+          ],
+          "tipo": "abertura",
+          "musica": "Tropicália",
+          "artista": "Caetano Veloso",
+          "via": "principal",
+          "deezer_id": 125300488,
+          "title": "Tropicália",
+          "title_short": "Tropicália",
+          "artist": "Caetano Veloso",
+          "artists": [
+            "Caetano Veloso"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/c0ef7a45d5726a2be1dd6795db13db11/500x500-000000-80-0-0.jpg",
+          "album": "Velho Chico, Vol. 1 - EP"
+        },
+        {
+          "obra": "Maria do Bairro",
+          "aceitas": [
+            "Maria do Bairro",
+            "María la del Barrio"
+          ],
+          "tipo": "abertura",
+          "musica": "María la del Barrio",
+          "artista": "Thalía",
+          "via": "principal",
+          "deezer_id": 3255363,
+          "title": "Maria La Del Barrio",
+          "title_short": "Maria La Del Barrio",
+          "artist": "Thalia",
+          "artists": [
+            "Thalia"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/0f8a35e1808baa54b957c4e716d01c74/500x500-000000-80-0-0.jpg",
+          "album": "Greatest Hits"
+        },
+        {
+          "obra": "Marimar",
+          "aceitas": [
+            "Marimar"
+          ],
+          "tipo": "abertura",
+          "musica": "Marimar",
+          "artista": "Thalía",
+          "via": "principal",
+          "deezer_id": 1215922922,
+          "title": "Marimar",
+          "title_short": "Marimar",
+          "artist": "Thalia",
+          "artists": [
+            "Thalia"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/f4337bd1567a4d022a39c1772a8bbc93/500x500-000000-80-0-0.jpg",
+          "album": "Marimar"
+        },
+        {
+          "obra": "Rebelde",
+          "aceitas": [
+            "Rebelde",
+            "RBD"
+          ],
+          "tipo": "abertura",
+          "musica": "Rebelde",
+          "artista": "RBD",
+          "via": "principal",
+          "deezer_id": 1065541812,
+          "title": "Rebelde",
+          "title_short": "Rebelde",
+          "artist": "RBD",
+          "artists": [
+            "RBD"
+          ],
+          "cover": "https://cdn-images.dzcdn.net/images/cover/00e82ae6fba03b2c0526264b31009716/500x500-000000-80-0-0.jpg",
+          "album": "Rebelde"
+        }
+      ]
+    }
+  ]
+}
