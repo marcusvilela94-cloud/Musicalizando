@@ -1,9 +1,8 @@
 # Separador de instrumentos (modo "Instrumentos")
 
 Programa que separa as prévias do Deezer em bateria, baixo, guitarra e voz
-(Demucs, modelo `htdemucs_6s`, só CPU). Pode rodar **no PC** e/ou **num
-Hugging Face Space** (pasta `space/`), ao mesmo tempo: a fila se divide entre
-eles. O site nunca separa nada: só coloca pedidos na fila e lê o cache.
+(Demucs, modelo `htdemucs_6s`, só CPU). Pode rodar **no PC** e/ou **na nuvem**
+(GitHub Actions), ao mesmo tempo: a fila se divide entre eles. O site nunca separa nada: só coloca pedidos na fila e lê o cache.
 
 O separador **não tem chave do Supabase**: fala só com o jogo, pelas rotas
 `/api/separador/*`, com o `SEPARADOR_TOKEN` (o mesmo que está na Vercel).
@@ -31,9 +30,14 @@ Dê dois cliques em **`iniciar-separador.bat`** e deixe a janela aberta.
 - Faixa com volume abaixo de mistura − 16 dB (`LIMIAR_SILENCIO_DB`) é marcada "sem conteúdo"
   (ex.: guitarra em funk) e o jogo pula essa camada. Os níveis medidos aparecem no terminal.
 
-## Separador na nuvem (Hugging Face Space)
-A pasta `space/` tem o Dockerfile do Space (CPU basic, grátis). Ele usa este mesmo
-`separador.py`, com o nome `HuggingFace` e as variáveis secretas `JOGO_URL` e
-`SEPARADOR_TOKEN`. Quando ninguém está ligado e alguém pede para preparar, o jogo
-acorda o Space (`HF_TOKEN` na Vercel). Para atualizar o Space depois de mudar o
-separador: `node scripts/hf-space.mjs`.
+## Separador na nuvem (GitHub Actions)
+O workflow `.github/workflows/separador.yml` roda este mesmo `separador.py` numa
+máquina do GitHub, com o nome `Nuvem`. Quando ninguém está ligado e alguém pede
+para preparar (ou a partida precisa em segundo plano), o jogo dispara o workflow
+(`GH_DISPATCH_TOKEN` na Vercel: token fine-grained só com "Actions: read and write"
+neste repositório). Ele liga em ~35 s, separa (~15–20 s por música) e desliga
+sozinho depois de 5 min sem pedidos. Segredos do repositório: `JOGO_URL` e
+`SEPARADOR_TOKEN`. O progresso aparece em GitHub → Actions → "Separador (nuvem)".
+
+(Alternativa paga: Hugging Face Space, pasta `space/` + `node scripts/hf-space.mjs`,
+com `HF_SPACE` na Vercel. Spaces Docker no CPU grátis exigem a assinatura PRO.)
