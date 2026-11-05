@@ -44,3 +44,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# configuração local do Claude Code (conector do Supabase)
+.mcp.json
