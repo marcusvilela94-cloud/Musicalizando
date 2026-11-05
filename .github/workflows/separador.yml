@@ -34,8 +34,10 @@ jobs:
       - name: Modelo em cache (htdemucs_6s)
         uses: actions/cache@v4
         with:
-          path: ~/.cache/torch
-          key: demucs-htdemucs_6s-v1
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+          key: demucs-htdemucs_6s-v2
 
       - name: Instalar PyTorch (CPU) e Demucs
         run: |
