@@ -1,4 +1,8 @@
 import type { QuizState, Round } from "@/lib/types";
+import type { StageDef } from "../types";
+
+/** Um só estágio: a prévia inteira, valendo 100 (espelhado em npl_stage_points). */
+export const OBRA_STAGES: StageDef[] = [{ seconds: 30, points: 100 }];
 
 /** "Qual é a obra?": o que todos veem (pacote; a obra e o tipo só na revelação). */
 export function obraOf(r: Round | null | undefined): QuizState | null {

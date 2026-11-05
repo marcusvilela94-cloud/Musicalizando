@@ -61,7 +61,7 @@ export const stagePoints = (r: Round) =>
       ? AUCTION_POINTS
       : // um time por vez: depois de passar a vez, vale metade
         Math.round(
-          ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : isQuizMode(r.mode) ? QUIZ_STAGES : CLASSIC_STAGES)[
+          ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : isQuizMode(r.mode) || r.mode === "obra" ? QUIZ_STAGES : CLASSIC_STAGES)[
             Math.max(0, r.stage - 1)
           ]?.points ?? 0) * (turnOf(r)?.factor ?? 1),
         );

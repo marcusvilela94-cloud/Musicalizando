@@ -503,7 +503,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
   const tb = tiebreakOf(round);
   return (
     <div className="flex w-full flex-col items-center gap-6">
-      {!contOf(round) && !isQuizMode(round.mode) && <StageBar round={round} />}
+      {!contOf(round) && !isQuizMode(round.mode) && round.mode !== "obra" && <StageBar round={round} />}
       {quizOf(round) && <QuizQuestion round={round} now={now} />}
       {obraOf(round) && <ObraHint round={round} />}
       {tb && <TiebreakBoard state={state} tb={tb} />}
@@ -531,7 +531,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
             <Equalizer className="h-24 [&>span]:w-5" />
           ) : (
             <p className="font-display text-3xl text-white/60">
-              {round.played_stage === 0 ? (quizOf(round) ? "🎧 A música vai tocar ao fundo…" : "🎧 Prontos? A música vai começar…") : "⏸ Trecho terminou"}
+              {round.played_stage === 0 ? (quizOf(round) ? "🎧 A música vai tocar ao fundo…" : "🎧 Prontos? A música vai começar…") : obraOf(round) ? "⏸ Música parou" : "⏸ Trecho terminou"}
             </p>
           )}
           <p className="font-display text-4xl text-white">

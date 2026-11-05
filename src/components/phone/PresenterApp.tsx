@@ -137,6 +137,8 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
                 ? "Pergunta"
                 : round.mode === "continue"
                   ? "Continuar a letra"
+                  : round.mode === "obra"
+                    ? "Música inteira"
                   : `Trecho ${round.stage} · ${stage.seconds}s`}
             {tb || round.mode === "quiz_choice" ? "" : ` · ${Math.round(stage.points * (turnOf(round)?.factor ?? 1))} pts`}
           </span>

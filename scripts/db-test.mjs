@@ -1230,6 +1230,7 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     assert.ok(!JSON.stringify(ws).includes("Rocky"), "a obra não vaza");
     assert.equal(wr.play_seq, 0, "toca com o Tocar, como o clássico");
     await rpc("npl_play", wc, OWNER, wr.id, 1, false);
+    assert.equal((await rpc("npl_play", wc, OWNER, wr.id, 1, true)).ok, false, "prévia inteira: sem 'Próximo trecho'");
     let wb = await rpc("npl_buzz", wc, P(90), wr.id);
     let wa = await rpc("npl_submit_answer", wc, P(90), wb.attempt_id, "", "Q1");
     assert.equal(wa.result, "wrong", "o nome da música não vale");

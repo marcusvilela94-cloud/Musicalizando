@@ -39,7 +39,7 @@ const MODE_HINTS: Record<ModeId, string> = {
   quiz_choice:
     "Estilo Kahoot: pergunta e alternativas na TV; todos os times respondem ao mesmo tempo pelo celular, no Tempo de resposta. Acerto vale de 100 (na hora) a 50 (no fim do prazo).",
   obra:
-    "Como o Clássico (trechos crescentes, EU SEI!), mas com trilhas e aberturas dos pacotes escolhidos: acerte o FILME, o ANIME ou a NOVELA. A TV mostra o emoji do pacote como dica. Usa só as músicas dos pacotes (não as fontes).",
+    "Trilhas e aberturas dos pacotes escolhidos tocando inteiras (sem trechos): quem souber aperta EU SEI! e diz o FILME, o ANIME ou a NOVELA. Vale 100. A TV mostra o emoji do pacote como dica. Usa só as músicas dos pacotes (não as fontes).",
 };
 
 const ORDER_HINTS: Record<ModeOrder, string> = {
@@ -50,7 +50,7 @@ const ORDER_HINTS: Record<ModeOrder, string> = {
 
 /** Em quais modos cada opção vale (para esconder ou etiquetar). Opções fora daqui valem para todos. */
 const APPLIES = {
-  clips: ["classic", "obra"] as ModeId[], // Trechos
+  clips: ["classic"] as ModeId[], // Trechos
   scoring: ["classic", "lyrics"] as ModeId[], // O que vale
   turns: TURN_MODES, // Formato da vez: classic, lyrics, continue, quiz_open, obra
   buzzRules: ["classic", "lyrics", "continue", "quiz_open", "obra"] as ModeId[], // Bloqueio e Penalidade (só "Quem sabe primeiro")
