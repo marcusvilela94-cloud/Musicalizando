@@ -29,6 +29,7 @@ import {
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
+import { singing } from "@/modes/continue/logic";
 import { teamLabel } from "@/lib/icons";
 
 type Answer = { round_id: string; title: string; artist: string; artists: string[]; line?: string | null } | null;
@@ -83,7 +84,7 @@ function TvWarning({ peers, connected }: { peers: Peers; connected: boolean }) {
 }
 
 function PresenterGame({ state, code, token, serverNow }: { state: RoomState; code: string; token: string; serverNow: () => number }) {
-  const g = useGameActions(state, code, token);
+  const g = useGameActions(state, code, token, serverNow);
   const { round, attempt } = g;
   const now = useNow(serverNow, 250);
   const [answer, setAnswer] = useState<Answer>(null);
@@ -155,6 +156,11 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
 
       {round.status === "answering" && attempt && <TurnCard state={state} attempt={attempt} now={now} code={code} token={token} />}
       {round.status === "doubt" && attempt && <DoubtCard state={state} attempt={attempt} answer={ans} code={code} token={token} />}
+      {singing(round, now) && (
+        <p className="rounded-xl bg-yellow-300/90 px-3 py-2 text-center font-display text-violet-950">
+          🎤 Cantando junto na TV… “Próxima música” pula para o resultado.
+        </p>
+      )}
       {(round.status === "revealed" || round.status === "scoreboard") && <Decisions state={state} round={round} code={code} token={token} />}
 
       <GameControls g={g} state={state} />

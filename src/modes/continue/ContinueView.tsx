@@ -116,3 +116,40 @@ export function ContinuePresenterView({ round }: PresenterRoundViewProps) {
     </div>
   );
 }
+
+/**
+ * "Cantar junto" (revelação): a linha escondida em destaque e as seguintes,
+ * acendendo em karaokê até o fim da prévia. `pos` = segundo da prévia tocando
+ * agora (null = ainda não voltou a tocar). `corner` = quem acertou + pontos.
+ */
+export function SingAlong({ round, pos, corner }: { round: Round; pos: number | null; corner?: React.ReactNode }) {
+  const c = contOf(round);
+  if (!c?.reveal) return null;
+  const all = [{ ...c.reveal, hidden: true }, ...(c.after ?? []).map((l) => ({ ...l, hidden: false }))];
+  // linha atual = a última que já começou
+  const cur = pos === null ? -1 : all.reduce((acc, l, i) => (pos >= Number(l.start) - 0.05 ? i : acc), -1);
+  // mostra a atual e algumas em volta (as próximas um pouco apagadas)
+  const fromIdx = Math.max(0, cur - 1);
+  const shown = all.slice(fromIdx, fromIdx + 4);
+  return (
+    <div className="relative flex w-full max-w-6xl flex-col items-center gap-5">
+      {corner && <div className="absolute -top-2 right-0">{corner}</div>}
+      <p className="font-display text-3xl text-white/70">🎤 Todo mundo canta junto!</p>
+      {shown.map((l, k) => {
+        const i = fromIdx + k;
+        const now = i === cur;
+        const past = i < cur;
+        return (
+          <p
+            key={`${i}-${l.text}`}
+            className={`text-center font-display font-bold leading-snug transition-all duration-300 ${
+              now ? "scale-105 text-7xl text-yellow-300" : past ? "text-4xl text-white/40" : "text-5xl text-white/60"
+            } ${l.hidden ? "rounded-[2rem] border-4 border-yellow-300 bg-black/30 px-8 py-3" : ""}`}
+          >
+            {l.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+}

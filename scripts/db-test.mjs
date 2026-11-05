@@ -968,6 +968,7 @@ await rpc("npl_start_match", code3, OWNER, tracks);
       { text: "Temos todo o tempo do mundo", start: 11, end: 14.5 },
     ],
     hidden: { text: L, start: 15, end: 18.2 },
+    after: [{ text: "Depois vem esta", start: 18.2, end: 22 }, { text: "E mais esta aqui", start: 22, end: 26 }],
   };
   const ct = [1, 2, 3].map((i) => ({
     deezer_id: 9500 + i, title: `Faixa ${i}`, title_short: `Faixa ${i}`, artist: "Banda", artists: ["Banda"], cover: "x",
@@ -980,9 +981,11 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   await rpc("npl_round_begin", cc, OWNER, rc.id, [], [], {});
   sc = await rpc("npl_get_state", cc);
   rc = sc.rounds[0];
-  assert.equal(rc.cont.ctx, 2);
-  assert.equal(rc.cont.max, 3);
-  assert.deepEqual(rc.cont.lines.map((l) => l.text), ["Mas tenho muito tempo", "Temos todo o tempo do mundo"], "2 linhas antes");
+  assert.equal(rc.cont.ctx, 4, "trecho único: todas as linhas desde a 1ª completa");
+  assert.equal(rc.cont.max, 1);
+  assert.equal(rc.cont.lines[0].text, "Todos os dias quando acordo");
+  assert.equal(rc.cont.after, undefined, "linhas seguintes só na revelação");
+  assert.ok(!JSON.stringify(sc).includes("Depois vem"), "linhas seguintes não vazam");
   assert.equal(rc.cont.hidden.words, 7, "nº de palavras da escondida");
   assert.ok(!JSON.stringify(sc).includes("prometido"), "linha escondida não vaza");
   // tocar e erro: bloqueio aguarda a música voltar
@@ -993,20 +996,22 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   sc = await rpc("npl_get_state", cc);
   assert.equal(sc.teams.find((t) => t.id === CA).score, 0, "sem penalidade neste modo");
   assert.equal(sc.rounds[0].locks[CA].until, null, "aguardando tocar de novo");
-  // mais contexto: 3 linhas, vale 70
-  const more = await rpc("npl_play", cc, OWNER, rc.id, 1, true);
-  assert.equal(more.ok, true);
-  assert.equal(more.round.cont.ctx, 3);
-  assert.equal(more.round.cont.lines.length, 3);
-  assert.ok(more.round.locks[CA].until, "contagem começou");
+  assert.equal((await rpc("npl_play", cc, OWNER, rc.id, 1, true)).ok, false, "sem 'Mais contexto'");
+  const again = await rpc("npl_play", cc, OWNER, rc.id, 1, false); // repetir
+  assert.equal(again.ok, true);
+  assert.ok(again.round.locks[CA].until, "contagem começou ao tocar de novo");
   bc = await rpc("npl_buzz", cc, P(71), rc.id);
   const rr = await rpc("npl_submit_answer", cc, P(71), bc.attempt_id, "", "e o que foi prometido ninguem prometeu");
   assert.equal(rr.result, "correct", "só a linha vale (mesmo com 'Artista e música')");
-  assert.equal(rr.points, 70);
+  assert.equal(rr.points, 100, "acerto vale 100 fixos (mesmo depois de repetir)");
   sc = await rpc("npl_get_state", cc);
   assert.equal(sc.rounds[0].status, "revealed");
   assert.equal(sc.rounds[0].cont.reveal.text, L, "revelação mostra a linha");
   assert.equal(Number(sc.rounds[0].cont.reveal.end), 18.2);
+  assert.deepEqual(sc.rounds[0].cont.after.map((l) => l.text), ["Depois vem esta", "E mais esta aqui"], "cantar junto");
+  await fails(rpc("npl_cont_skip", cc, P(70), rc.id), "not_owner");
+  await rpc("npl_cont_skip", cc, OWNER, rc.id);
+  assert.equal((await rpc("npl_get_state", cc)).rounds[0].cont.sung, true, "pula para a revelação normal");
   // apresentador vê a linha certa
   await rpc("npl_next_round", cc, OWNER, 1);
   // música sem dados válidos não entra no modo

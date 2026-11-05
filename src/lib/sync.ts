@@ -104,6 +104,8 @@ export type SyncLine = {
   confidence: number; // 0..100
   /** a linha começou antes da prévia (não serve para "parar antes") */
   cut: boolean;
+  /** fim da última palavra ouvida desta linha (s da prévia) */
+  sungEnd?: number;
   /** tempo previsto pelo LRC (offset da prévia na música), se houver */
   lrcStart: number | null;
   /** "audio" = achada na transcrição; "lrc" = só prevista pelo LRC */
@@ -178,6 +180,7 @@ function align(words: Word[], lines: Line[]): Omit<SyncResult, "language" | "tra
   for (const [ln, ps] of byLine) {
     const line = lines[ln];
     const first = ps[0];
+    const lastP = ps[ps.length - 1];
     const pos = B[first.b].pos;
     const start = A[first.a].start - pos * SECS_PER_WORD;
     const matched = ps.reduce((acc, p) => acc + p.s, 0);
@@ -189,6 +192,7 @@ function align(words: Word[], lines: Line[]): Omit<SyncResult, "language" | "tra
       start: Math.max(0, Math.round(start * 100) / 100),
       confidence: Math.round(Math.min(100, conf)),
       cut: start < 0.15,
+      sungEnd: Math.round(A[lastP.a].end * 100) / 100,
       lrcStart: null,
       source: "audio",
     });
@@ -228,7 +232,7 @@ function align(words: Word[], lines: Line[]): Omit<SyncResult, "language" | "tra
 // ---------------------------------------------------------------------
 export type ContLine = { text: string; start: number; end: number };
 /** O que vai para npl_tracks.cont (tempos em segundos da prévia). */
-export type ContinuePlan = { lines: ContLine[]; hidden: ContLine };
+export type ContinuePlan = { lines: ContLine[]; hidden: ContLine; after: ContLine[] };
 export type ContinueVerdict = { ok: true; plan: ContinuePlan; offset: number } | { ok: false; reason: string };
 
 const PREVIEW_SECS = 30;
@@ -239,15 +243,18 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
  *  - offset confiável: 2+ linhas ouvidas com confiança >= 70% e todas
  *    concordando (lrc - início) com a mediana em até 1 s;
  *  - todas as linhas da prévia usam os tempos do LRC (com o offset);
- *  - linha escondida: começa entre 8 e 24 s, termina 1 s antes do fim,
- *    4 a 12 palavras, até ~3,5 palavras/s, não é coro entre parênteses,
- *    onomatopeia nem o nome do artista, confiança >= 70%, e tem 2+ linhas
- *    antes dentro da prévia. Preferência: as que mais se repetem (refrão).
+ *  - o trecho começa na 1ª linha COMPLETA da prévia e vai até a escondida;
+ *  - linha escondida: pelo menos 10 s de música antes dela (desde o início do
+ *    trecho) e 8 s depois do fim (para cantar junto), 4 a 12 palavras, até
+ *    ~3,5 palavras/s, não é coro entre parênteses, onomatopeia nem o nome do
+ *    artista, confiança >= 70%. Preferência: as que mais se repetem (refrão).
  */
+const MIN_BEFORE = 10;
+const MIN_AFTER = 8;
+
 function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): ContinueVerdict {
   if (!lines.length || lines.some((l) => l.lrc === null)) return { ok: false, reason: "sem letra sincronizada (LRC)" };
   const good = aligned.filter((l) => l.source === "audio" && !l.cut && l.confidence >= 70 && lines[l.idx]?.lrc !== null);
-  // a confiança do align já ganhou bônus por concordar com o LRC: recalcula sem depender disso
   if (good.length < 2) return { ok: false, reason: `poucas linhas ouvidas com confiança (${good.length})` };
   const d = good.map((l) => lines[l.idx].lrc! - l.start).sort((x, y) => x - y);
   const offset = d[Math.floor(d.length / 2)];
@@ -261,30 +268,38 @@ function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): Con
     const end = next !== undefined && next !== null ? next - offset : start + Math.min(6, l.tokens.length * 0.45);
     return { start, end };
   });
+  // 1ª linha completa (que começa dentro da prévia)
+  const first = at.findIndex((t) => t.start >= 0.05);
+  if (first < 0) return { ok: false, reason: "nenhuma linha completa na prévia" };
+  const clipStart = at[first].start;
+
   const conf = new Map(aligned.filter((l) => l.source === "audio").map((l) => [l.idx, l.confidence]));
+  // fim real do canto da linha: última palavra ouvida (ou estimativa), nunca depois da próxima linha
+  const audioEnd = new Map(aligned.filter((l) => l.source === "audio" && l.sungEnd !== undefined).map((l) => [l.idx, l.sungEnd!]));
+  const sungEnd = (i: number) =>
+    Math.min(at[i].end, audioEnd.get(i) !== undefined && audioEnd.get(i)! > at[i].start ? audioEnd.get(i)! + 0.2 : at[i].start + lines[i].tokens.length * 0.45 + 0.5);
   const count = new Map<string, number>();
   for (const l of lines) count.set(l.tokens.join(" "), (count.get(l.tokens.join(" ")) ?? 0) + 1);
   const artistKey = fold(artist);
 
   const cands: { i: number; rep: number; same: boolean; conf: number }[] = [];
   const why = new Map<string, number>();
-  const no = (r: string) => (why.set(r, (why.get(r) ?? 0) + 1), false);
+  const no = (r: string) => void why.set(r, (why.get(r) ?? 0) + 1);
   lines.forEach((l, i) => {
-    const { start, end } = at[i];
+    if (i <= first) return;
+    const { start } = at[i];
+    const end = sungEnd(i);
     const words = l.tokens.length;
     const k = l.tokens.join(" ");
-    const ok =
-      (start >= 8 && start <= 24 && end <= PREVIEW_SECS - 1) || no("fora da janela 8–24 s");
-    if (!ok) return;
-    if (words < 4 || words > 12) return void no("tamanho");
-    if (words / Math.max(0.3, end - start) > 3.5) return void no("rápida demais");
-    if (/^\s*\(.*\)\s*$/.test(l.text)) return void no("coro entre parênteses");
-    if (l.tokens.every((w) => FILLER_RE.test(w))) return void no("onomatopeia");
-    if (artistKey && (k === artistKey || (k.includes(artistKey) && words <= artistKey.split(" ").length + 2))) return void no("nome do artista");
-    if ((conf.get(i) ?? 0) < 70) return void no("confiança baixa");
-    // contexto: pelo menos 2 linhas inteiras antes, dentro da prévia
-    if (i < 2 || at[i - 2].start < 0.05) return void no("pouco contexto antes");
-    cands.push({ i, rep: count.get(k) ?? 1, same: i > 0 && lines[i - 1].tokens.join(" ") === k, conf: conf.get(i) ?? 0 });
+    if (start - clipStart < MIN_BEFORE) return no("pouca música antes");
+    if (PREVIEW_SECS - end < MIN_AFTER) return no("pouca música depois");
+    if (words < 4 || words > 12) return no("tamanho");
+    if (words / Math.max(0.3, end - start) > 3.5) return no("rápida demais");
+    if (/^\s*\(.*\)\s*$/.test(l.text)) return no("coro entre parênteses");
+    if (l.tokens.every((w) => FILLER_RE.test(w))) return no("onomatopeia");
+    if (artistKey && (k === artistKey || (k.includes(artistKey) && words <= artistKey.split(" ").length + 2))) return no("nome do artista");
+    if ((conf.get(i) ?? 0) < 70) return no("confiança baixa");
+    cands.push({ i, rep: count.get(k) ?? 1, same: lines[i - 1].tokens.join(" ") === k, conf: conf.get(i) ?? 0 });
   });
   if (!cands.length) {
     const top = [...why.entries()].sort((a, b) => b[1] - a[1]).map(([r]) => r).slice(0, 2).join(", ");
@@ -294,14 +309,20 @@ function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): Con
   cands.sort((a, b) => b.rep - a.rep || Number(a.same) - Number(b.same) || b.conf - a.conf);
   const h = cands[0].i;
   const ctx: ContLine[] = [];
-  for (let j = Math.max(0, h - 4); j < h; j++) {
-    if (at[j].start < 0.05) continue; // só linhas que começam dentro da prévia
-    ctx.push({ text: lines[j].text, start: r2(at[j].start), end: r2(at[j].end) });
+  for (let j = first; j < h; j++) ctx.push({ text: lines[j].text, start: r2(at[j].start), end: r2(at[j].end) });
+  // as seguintes, até o fim da prévia (karaokê de "cantar junto")
+  const after: ContLine[] = [];
+  for (let j = h + 1; j < lines.length && at[j].start < PREVIEW_SECS - 0.3; j++) {
+    after.push({ text: lines[j].text, start: r2(at[j].start), end: r2(Math.min(PREVIEW_SECS, at[j].end)) });
   }
   return {
     ok: true,
     offset: r2(offset),
-    plan: { lines: ctx.slice(-4), hidden: { text: lines[h].text, start: r2(at[h].start), end: r2(Math.min(PREVIEW_SECS, at[h].end)) } },
+    plan: {
+      lines: ctx.slice(-12),
+      hidden: { text: lines[h].text, start: r2(at[h].start), end: r2(Math.min(PREVIEW_SECS, sungEnd(h))) },
+      after: after.slice(0, 12),
+    },
   };
 }
 

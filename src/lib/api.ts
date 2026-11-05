@@ -100,6 +100,9 @@ export const api = {
       p_stage: stage,
       p_advance: advance,
     }),
+  /** "Continuar a letra": pula o "cantar junto" e vai para a revelação normal. */
+  contSkip: (code: string, owner: string, roundId: string) =>
+    call<void>("npl_cont_skip", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   skipRound: (code: string, owner: string, roundId: string) =>
     call<void>("npl_skip_round", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   endRound: (code: string, owner: string, roundId: string) =>

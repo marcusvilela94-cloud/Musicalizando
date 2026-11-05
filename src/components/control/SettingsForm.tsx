@@ -32,7 +32,7 @@ const MODE_HINTS: Record<ModeId, string> = {
   lyrics:
     "Sem som: a TV mostra trechos da letra (título e artista viram ___), um verso por vez. Quanto menos versos, mais pontos: 100, 75, 50, 30 e 15 no refrão. A prévia toca na revelação.",
   continue:
-    "A TV mostra música e artista e toca um trecho que para logo antes de uma linha: cante/digite a próxima linha. Com 2 linhas de contexto vale 100; 'Mais contexto' cai para 70 e 40.",
+    "A TV mostra música e artista e toca um trecho que para logo antes de uma linha: cante/digite a próxima linha (vale 100). Na revelação, a música segue até o fim para todo mundo cantar junto.",
 };
 
 const ORDER_HINTS: Record<ModeOrder, string> = {

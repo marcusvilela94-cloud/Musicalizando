@@ -7,11 +7,11 @@ import { currentAttempt, currentRound, ranking, teamById, tiebreakDecider, tiebr
 import type { Attempt, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
-import { contOf } from "@/modes/continue/logic";
+import { contOf, singing } from "@/modes/continue/logic";
 import { lyricsOf } from "@/modes/lyrics/LyricsView";
 
 /** Ações de quem comanda a partida (TV no "Todos jogam" ou celular do apresentador). */
-export function useGameActions(state: RoomState, code: string, token: string) {
+export function useGameActions(state: RoomState, code: string, token: string, serverNow: () => number = Date.now) {
   const [error, setError] = useState<string | null>(null);
   const round = currentRound(state);
   const attempt = currentAttempt(state, round);
@@ -54,7 +54,12 @@ export function useGameActions(state: RoomState, code: string, token: string) {
     skip: () => can.skip && run(() => api.skipRound(code, token, round!.id)),
     endTurn: () => can.endTurn && run(() => api.endTurn(code, token, attempt!.id)),
     scoreboard: () => can.scoreboard && run(() => api.showScoreboard(code, token, round!.id)),
-    nextRound: () => can.nextRound && run(() => api.nextRound(code, token, round!.round_no)),
+    // "Continuar a letra": durante o "cantar junto", a 1ª vez vai para a revelação normal
+    nextRound: () =>
+      can.nextRound &&
+      run(() =>
+        singing(round, serverNow()) ? api.contSkip(code, token, round!.id) : api.nextRound(code, token, round!.round_no),
+      ),
     finish: () => {
       if (window.confirm("Encerrar a partida agora?")) run(() => api.finishMatch(code, token));
     },
@@ -124,9 +129,7 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
               </Button>
             ) : (
               <Button variant="secondary" className={big} disabled={!can.next} onClick={actions.next}>
-                {round.mode === "continue"
-                  ? `➕ Mais contexto${nextStage ? ` (${nextStage.seconds} linhas · ${nextStage.points})` : ""}`
-                  : `⏭ Próximo trecho${nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}`}
+                ⏭ Próximo trecho{nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}
                 {k("→")}
               </Button>
             )}

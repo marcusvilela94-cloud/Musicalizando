@@ -146,7 +146,7 @@ export type AuctionState = {
 
 /** "Continuar a letra": linha com tempos em segundos da prévia. */
 export type ContLine = { text: string; start: number; end: number };
-export type ContinuePlan = { lines: ContLine[]; hidden: ContLine };
+export type ContinuePlan = { lines: ContLine[]; hidden: ContLine; after: ContLine[] };
 /** O que todos veem na rodada (sem o texto da linha escondida até a revelação). */
 export type ContinueState = {
   title?: string;
@@ -157,6 +157,8 @@ export type ContinueState = {
   lines: { text: string; start: number }[];
   hidden: { words: number; start: number };
   reveal?: ContLine; // só na revelação
+  after?: ContLine[]; // só na revelação: as linhas seguintes (cantar junto)
+  sung?: boolean; // "Próxima música" pulou o cantar junto
 };
 
 /** Modo letra: o que todos veem (o servidor só manda os trechos já revelados). */

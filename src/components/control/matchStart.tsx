@@ -40,7 +40,8 @@ async function prepareMatch(state: RoomState, onProgress: (p: Progress | null) =
 
   onProgress({ label: "Sorteando músicas…", done: 0, total: 0 });
   // "Continuar a letra" descarta algumas músicas: pede candidatas a mais
-  const spares = wantC ? Math.min(25, wantC + 5) : 0;
+  // (no teste, ~40% das músicas servem: pede 2× + 5 candidatas a mais)
+  const spares = wantC ? Math.min(30, wantC * 2 + 5) : 0;
   const { tracks: all, warnings: w } = await deezer.build(s.sources, s.rounds + extra + spares, s.versionFilter !== false, wantL);
   const withL = all.filter((t) => t.lyrics);
   const lyricPool = withL.slice(0, wantL);

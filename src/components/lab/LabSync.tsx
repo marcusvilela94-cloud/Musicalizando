@@ -17,7 +17,7 @@ type Result = {
   offset: number | null;
   lines: SyncLine[];
   continue?:
-    | { ok: true; offset: number; plan: { lines: { text: string; start: number; end: number }[]; hidden: { text: string; start: number; end: number } } }
+    | { ok: true; offset: number; plan: { lines: { text: string; start: number; end: number }[]; hidden: { text: string; start: number; end: number }; after?: { text: string; start: number; end: number }[] } }
     | { ok: false; reason: string };
 };
 type Item = { id: number; title: string; artist: string; status: "waiting" | "running" | "done" | "error"; result?: Result; error?: string };
@@ -297,20 +297,20 @@ function ContinueVerdict({ r }: { r: Result }) {
   const [state, setState] = useState<string | null>(null);
   if (!v.ok) return <p className="mt-2 rounded-lg bg-rose-500/20 px-3 py-2 text-sm">🎤 Continuar a letra: <b>fora</b> — {v.reason}</p>;
   const { plan } = v;
-  // simula a rodada: começa no início de uma linha (2 antes da escondida) e para 0,3 s antes
-  const play = (ctx: number, reveal = false) => {
+  // rodada: da 1ª linha completa até 0,3 s antes da escondida; revelação: dali até o fim da prévia
+  const play = (reveal: boolean) => {
     if (!audio.current) audio.current = new Audio(r.preview);
     const a = audio.current;
     a.pause();
-    const from = reveal ? Math.max(0, plan.hidden.start - 0.3) : plan.lines[Math.max(0, plan.lines.length - ctx)].start;
-    const to = reveal ? plan.hidden.end + 1 : plan.hidden.start - 0.3;
+    const from = reveal ? Math.max(0, plan.hidden.start - 0.3) : plan.lines[0].start;
+    const to = reveal ? 31 : plan.hidden.start - 0.3;
     a.currentTime = from;
-    setState(reveal ? "tocando a linha escondida…" : `${ctx} linhas de contexto…`);
+    setState(reveal ? "cantar junto até o fim…" : "rodada…");
     a.play().catch(() => {});
     const check = () => {
-      if (a.currentTime >= to) {
+      if (a.currentTime >= to || a.ended) {
         a.pause();
-        setState(reveal ? "fim da linha" : "parou: qual é a próxima linha?");
+        setState(reveal ? "fim da prévia" : "parou: qual é a próxima linha?");
       } else if (!a.paused) requestAnimationFrame(check);
     };
     requestAnimationFrame(check);
@@ -318,13 +318,12 @@ function ContinueVerdict({ r }: { r: Result }) {
   return (
     <div className="mt-2 flex flex-col gap-1 rounded-lg bg-emerald-500/15 px-3 py-2 text-sm">
       <p>
-        🎤 Continuar a letra: esconderia <b>“{plan.hidden.text}”</b> ({plan.hidden.start.toFixed(2)}s → {plan.hidden.end.toFixed(2)}s) · {plan.lines.length} linhas de contexto possíveis · offset {v.offset}s
+        🎤 Continuar a letra: esconderia <b>“{plan.hidden.text}”</b> ({plan.hidden.start.toFixed(2)}s → {plan.hidden.end.toFixed(2)}s) · trecho de{" "}
+        {(plan.hidden.start - plan.lines[0].start).toFixed(1)}s ({plan.lines.length} linhas) · {(plan.after ?? []).length} linhas para cantar junto · offset {v.offset}s
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        {[2, 3, 4].filter((n) => n <= plan.lines.length).map((n) => (
-          <button key={n} onClick={() => play(n)} className="rounded-md bg-black/30 px-2 py-0.5">▶ {n} linhas</button>
-        ))}
-        <button onClick={() => play(0, true)} className="rounded-md bg-black/30 px-2 py-0.5">▶ revelação</button>
+        <button onClick={() => play(false)} className="rounded-md bg-black/30 px-2 py-0.5">▶ rodada</button>
+        <button onClick={() => play(true)} className="rounded-md bg-black/30 px-2 py-0.5">▶ revelação (cantar junto)</button>
         {state && <span className="text-white/70">{state}</span>}
       </div>
     </div>

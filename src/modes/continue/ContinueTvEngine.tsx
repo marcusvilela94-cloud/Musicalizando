@@ -8,8 +8,8 @@ import { contClip, contOf } from "./logic";
 const STALE_PLAY_MS = 4000;
 
 /**
- * Cada "Tocar" / "Repetir" / "Mais contexto" incrementa round.play_seq: a TV
- * toca do INÍCIO da 1ª linha de contexto e para sozinha 0,3 s antes da linha
+ * Cada "Tocar" / "Repetir" incrementa round.play_seq: a TV toca do INÍCIO da
+ * 1ª linha completa da prévia e para sozinha 0,3 s antes da linha
  * escondida. Para na hora se alguém apertar EU SEI! ou o jogo pausar.
  */
 export function ContinueTvEngine({ round, paused, buffer, audio, serverNow, onPlayingChange }: TvEngineProps) {

@@ -33,8 +33,8 @@ import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
-import { ContinueRevealLine, ContinueStack } from "@/modes/continue/ContinueView";
-import { contOf } from "@/modes/continue/logic";
+import { ContinueRevealLine, ContinueStack, SingAlong } from "@/modes/continue/ContinueView";
+import { CONT_STOP_BEFORE, contOf, singUntil } from "@/modes/continue/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
 import { enabledModes } from "@/modes/schedule";
 import type { TvRoundViewProps } from "@/modes/types";
@@ -61,7 +61,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const now = useNow(serverNow, 250);
 
   // "Todos jogam": quem está na frente da TV comanda (botões + teclado)
-  const g = useGameActions(state, code, host);
+  const g = useGameActions(state, code, host, serverNow);
 
   const roundId = round?.id;
   const roundNo = round?.round_no ?? 0;
@@ -234,6 +234,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const reveal = useRef<{ roundId: string; pos: number; done: boolean; announced: boolean } | null>(null);
   // "Continuar a letra": relógio da linha escondida na revelação (para o karaokê)
   const [contClock, setContClock] = useState<{ roundId: string; wall: number; base: number } | null>(null);
+  // a prévia acabou (fim do "cantar junto")
+  const [singEnded, setSingEnded] = useState<string | null>(null);
   useEffect(() => {
     if (!revealing || !buffer || !roundId) return;
     if (!reveal.current || reveal.current.roundId !== roundId) {
@@ -253,11 +255,20 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     const line = contOf(currentRound(state))?.reveal;
     const base = line ? Math.max(0, Number(line.start) - 0.3) : 0;
     const from = line && r.pos === 0 ? base : r.pos;
-    const stopAt = line ? Math.min(buffer.duration, Number(line.end) + 1) : buffer.duration;
+    const stopAt = buffer.duration;
     const t = setTimeout(() => {
       audio.stopAll();
       if (line) setContClock({ roundId, wall: serverNow(), base: from - base });
-      handle = audio.play(buffer, from, Math.max(0.1, stopAt - from), () => (r.done = true), line ? 0.4 : 2.5);
+      handle = audio.play(
+        buffer,
+        from,
+        Math.max(0.1, stopAt - from),
+        () => {
+          r.done = true;
+          if (line) setSingEnded(roundId);
+        },
+        2.5,
+      );
     }, delay);
     return () => {
       clearTimeout(t);
@@ -321,6 +332,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
             ctx={ctx}
             contest={!hostStyle}
             contElapsed={contClock && contClock.roundId === round.id ? (now - contClock.wall) / 1000 + contClock.base : -1}
+            singEnded={singEnded === round.id}
+            now={now}
           />
         )}
         {round.status === "scoreboard" && <ScoreboardView state={state} round={round} />}
@@ -416,7 +429,7 @@ function StageBar({ round }: { round: Round }) {
 function Worth({ state, round }: { state: RoomState; round: Round }) {
   const pts = stagePoints(round);
   const need = missingParts(state, round);
-  if (state.room.settings.scoring === "title") {
+  if (state.room.settings.scoring === "title" || round.mode === "continue") {
     return <span>Valendo <b className="text-yellow-300 text-5xl">{pts}</b> pts</span>;
   }
   if (need.artist && need.title) {
@@ -452,7 +465,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
   const tb = tiebreakOf(round);
   return (
     <div className="flex w-full flex-col items-center gap-6">
-      <StageBar round={round} />
+      {!contOf(round) && <StageBar round={round} />}
       {tb && <TiebreakBoard state={state} tb={tb} />}
       <div className="flex flex-wrap items-center justify-center gap-4 font-display text-3xl">
         {tb ? (
@@ -546,15 +559,47 @@ function DecisionFlash({ state, attempt, tiebreak }: { state: RoomState; attempt
   );
 }
 
-function RevealView({ state, round, ctx, contest, contElapsed = -1 }: { state: RoomState; round: Round; ctx: TvCtx; contest: boolean; contElapsed?: number }) {
-  const cLine = contOf(round)?.reveal;
-  // "Continuar a letra": enquanto a linha toca, só ela (karaokê); depois capa, quem acertou e pontos
-  if (cLine && contElapsed < Number(cLine.end) - Number(cLine.start) + 1.3) {
+function RevealView({
+  state,
+  round,
+  ctx,
+  contest,
+  contElapsed = -1,
+  singEnded = false,
+  now,
+}: {
+  state: RoomState;
+  round: Round;
+  ctx: TvCtx;
+  contest: boolean;
+  contElapsed?: number;
+  singEnded?: boolean;
+  now: number;
+}) {
+  const c = contOf(round);
+  // "Continuar a letra": cantar junto até o fim da prévia (ou até "Próxima música"),
+  // depois a revelação normal (capa, música, artista, placar)
+  const until = singUntil(round);
+  if (c?.reveal && !c.sung && !singEnded && until !== null && now < until + 4000) {
+    const pos = contElapsed < 0 ? null : Math.max(0, Number(c.reveal.start) - CONT_STOP_BEFORE) + contElapsed;
+    const winner = teamById(state, round.winner_team_id);
+    const pts = winner ? (roundDelta(state, round).get(winner.id) ?? 0) : 0;
     return (
-      <div className="flex w-full max-w-6xl flex-col items-center gap-6">
-        <p className="font-display text-3xl text-white/70">A linha era…</p>
-        <ContinueRevealLine round={round} elapsed={contElapsed < 0 ? -1 : contElapsed} />
-      </div>
+      <SingAlong
+        round={round}
+        pos={pos}
+        corner={
+          winner ? (
+            <TeamChip team={winner} className="text-2xl px-4 py-1 opacity-90">
+              acertou {pts > 0 ? `+${pts}` : ""}
+            </TeamChip>
+          ) : (
+            <span className="rounded-full bg-black/40 px-4 py-1 font-display text-xl text-white/70">
+              {round.skipped ? "música pulada" : "ninguém acertou"}
+            </span>
+          )
+        }
+      />
     );
   }
   return <RevealCard state={state} round={round} ctx={ctx} contest={contest} />;

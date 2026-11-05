@@ -5,8 +5,8 @@ import { CONTINUE_STAGES } from "./stages";
 
 /**
  * Continuar a letra: a TV mostra música e artista, toca o trecho que termina
- * 0,3 s antes de uma linha e os times precisam cantar/digitar a próxima linha.
- * "Mais contexto" começa uma linha mais cedo (100 / 70 / 40).
+ * 0,3 s antes de uma linha e os times precisam cantar/digitar a próxima linha
+ * (100 pontos). Na revelação a música segue até o fim: cantar junto.
  */
 export const continueMode: ModeDef = {
   id: "continue",
