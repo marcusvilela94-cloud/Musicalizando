@@ -5,16 +5,17 @@ import "server-only";
  * visitas; para acordar, o servidor consulta o estado e pede para religar
  * (HF_TOKEN fica só aqui no servidor). HF_SPACE = "dono/nome".
  */
-const SPACE = () => process.env.HF_SPACE || "marcuslk/musicalizando-separador";
+const SPACE = () => process.env.HF_SPACE ?? "";
 const API = "https://huggingface.co/api/spaces";
 
-export const cloudConfigured = () => !!process.env.HF_TOKEN;
+/** Só com o Space criado (HF_SPACE = "marcuslk/musicalizando-separador" na Vercel) e o HF_TOKEN. */
+export const cloudConfigured = () => !!process.env.HF_TOKEN && /^[\w-]+\/[\w.-]+$/.test(SPACE());
 
 type Runtime = { stage?: string; domains?: { domain?: string }[] };
 
 export async function wakeCloudSeparator(): Promise<{ stage: string | null; action: string }> {
   const token = process.env.HF_TOKEN;
-  if (!token) return { stage: null, action: "not_configured" };
+  if (!token || !cloudConfigured()) return { stage: null, action: "not_configured" };
   const auth = { Authorization: `Bearer ${token}` };
   const rt = await fetch(`${API}/${SPACE()}/runtime`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(10000) })
     .then((r) => (r.ok ? (r.json() as Promise<Runtime>) : null))

@@ -685,7 +685,7 @@ function StemsPanel({
         ) : waking ? (
           "☁️ Acordando o separador da nuvem… (leva 1 a 3 minutos; os pedidos ficam na fila)"
         ) : (
-          "🔴 Nenhum separador ligado — ao pedir para preparar, o da nuvem é acordado (ou ligue o programa no PC)."
+          "🔴 Nenhum separador ligado — ligue o programa no PC (o da nuvem, se estiver configurado, acorda sozinho ao pedir para preparar)."
         )}
       </div>
       {poolError ? (
