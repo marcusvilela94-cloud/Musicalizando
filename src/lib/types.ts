@@ -26,7 +26,8 @@ export type ModeId = "classic" | "auction" | "lyrics";
 export type RoomSettings = {
   mode: ModeId; // modo fixo da partida
   modeSelection: "fixed" | "random"; // "random": sorteia o modo de cada rodada entre os do modePool
-  modePool: ModeId[];
+  modePool: ModeId[]; // modos ligados (2+ = a partida mistura)
+  modeOrder?: "alternate" | "random" | "blocks"; // com 2+ modos (padrão "alternate")
   rounds: number; // 5..30
   answerSeconds: 0 | 10 | 20 | 30; // 0 = sem limite
   penalty: 0 | 20 | 50;
@@ -56,6 +57,7 @@ export type PickedTrack = {
   cover: string | null;
   album: string | null;
   lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
+  mode?: ModeId; // modo planejado para a rodada desta posição
 };
 
 /**
@@ -107,6 +109,7 @@ export type Reveal = {
   cover: string | null;
   album: string | null;
   lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
+  mode?: ModeId; // modo planejado para a rodada desta posição
 };
 
 /** Leilão: "artist" = TV mostra o artista (vale a música); "genre" = gênero + ano (vale o artista). */

@@ -16,17 +16,45 @@ type LrcRecord = {
   syncedLyrics?: string | null;
 };
 
-async function lrclib<T>(path: string): Promise<T | null> {
+/** A LRCLIB limita o ritmo (429): no máximo 3 requisições ao mesmo tempo. */
+const MAX_PARALLEL = 3;
+let running = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_PARALLEL) await new Promise<void>((r) => waiting.push(r));
+  running++;
   try {
-    const res = await fetch(`${API}${path}`, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-    return res.ok ? ((await res.json()) as T) : null;
-  } catch {
-    return null;
+    return await fn();
+  } finally {
+    running--;
+    waiting.shift()?.();
   }
+}
+
+/** Erro temporário (429/5xx/rede): não dá para dizer que a música não tem letra. */
+class LrclibBusy extends Error {}
+
+async function lrclib<T>(path: string): Promise<T | null> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const r = await slot(async () => {
+      try {
+        const res = await fetch(`${API}${path}`, {
+          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.status === 404) return { ok: true as const, data: null };
+        if (res.status === 429 || res.status >= 500) return { ok: false as const, wait: Number(res.headers.get("retry-after")) || 0 };
+        return { ok: true as const, data: res.ok ? ((await res.json()) as T) : null };
+      } catch {
+        return { ok: false as const, wait: 0 };
+      }
+    });
+    if (r.ok) return r.data;
+    // muitas requisições: espera e tenta de novo (1 s, 2 s, 4 s)
+    await new Promise((res) => setTimeout(res, Math.max(r.wait * 1000, 1000 * 2 ** attempt)));
+  }
+  throw new LrclibBusy("LRCLIB ocupada");
 }
 
 /** Minúsculas, sem acentos, só letras/números e espaços. */
@@ -203,9 +231,23 @@ export function buildVerses(text: string, title: string, artists: string[]): Lyr
   return { masked: plain.map((seg) => seg.map(mask)), plain };
 }
 
-/** Letra + versos de uma faixa (null se não tem letra boa para o modo). */
+/** Letras já buscadas (título|artista -> texto ou null). Erro temporário não entra no cache. */
+const lyricsCache = new Map<string, Promise<string | null>>();
+function cachedLyrics(title: string, artist: string, duration?: number) {
+  const k = `${key(title)}|${key(artist)}`;
+  let p = lyricsCache.get(k);
+  if (!p) {
+    p = fetchLyrics(title, artist, duration);
+    p.catch(() => lyricsCache.delete(k));
+    lyricsCache.set(k, p);
+    if (lyricsCache.size > 2000) lyricsCache.delete(lyricsCache.keys().next().value!);
+  }
+  return p;
+}
+
+/** Letra + versos de uma faixa (null se não tem letra boa para o modo; erro se a LRCLIB não respondeu). */
 export async function versesFor(t: { title: string; titleShort: string; artist: string; duration?: number }) {
-  const text = await fetchLyrics(t.titleShort, t.artist, t.duration);
+  const text = await cachedLyrics(t.titleShort, t.artist, t.duration);
   if (!text) return null;
   // participações no título ("(feat. Fulano)") também viram "___"
   const feat = t.title.match(/\((?:feat\.?|ft\.?|part\.?|com|with)\s+([^)]*)\)/i)?.[1] ?? "";

@@ -182,8 +182,8 @@ export const deezer = {
     getJson<{ id: string; name: string; picture: string | null; fans: number }[]>(
       `/api/deezer/artists?q=${encodeURIComponent(q)}`,
     ),
-  /** lyrics: "all" = só músicas com letra; "some" = busca letra para as que tiverem. */
-  build: (sources: RoomSettings["sources"], count: number, versionFilter: boolean, lyrics: "none" | "some" | "all") =>
+  /** lyrics = quantas músicas COM letra a partida precisa (rodadas de "Só pela letra"). */
+  build: (sources: RoomSettings["sources"], count: number, versionFilter: boolean, lyrics: number) =>
     getJson<{ tracks: PickedTrack[]; warnings: string[]; withLyrics: number }>("/api/deezer/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

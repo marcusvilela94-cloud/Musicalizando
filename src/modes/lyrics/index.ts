@@ -15,6 +15,7 @@ function SilentEngine() {
 export const lyricsMode: ModeDef = {
   id: "lyrics",
   label: "Só pela letra",
+  icon: "📝",
   description: "Trechos da letra, um por vez: quanto menos versos, mais pontos.",
   stages: LYRICS_STAGES,
   pickOffsets: () => [],

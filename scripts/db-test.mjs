@@ -878,6 +878,41 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok ícones");
 }
 
+// ---------- vários modos ligados (modo planejado por música) ----------
+{
+  const { code: c8 } = await rpc("npl_create_room", OWNER, {
+    mode: "classic", modeSelection: "random", modePool: ["classic", "auction", "lyrics"], modeOrder: "blocks", rounds: 5,
+  });
+  let s8 = await rpc("npl_get_state", c8);
+  assert.equal(s8.room.settings.modeOrder, "blocks");
+  await rpc("npl_update_settings", c8, OWNER, { modeOrder: "zig" });
+  assert.equal((await rpc("npl_get_state", c8)).room.settings.modeOrder, "alternate", "padrão: alternando");
+  await rpc("npl_join", c8, P(50), "Ana");
+  await rpc("npl_join", c8, P(51), "Bia");
+  s8 = await rpc("npl_get_state", c8);
+  await rpc("npl_set_team", c8, P(50), s8.teams[0].id);
+  await rpc("npl_set_team", c8, P(51), s8.teams[1].id);
+  const v = { masked: [["a", "b"], ["c", "d"], ["e", "f"]], plain: [["a", "b"], ["c", "d"], ["e", "f"]] };
+  const plan = ["auction", "classic", "lyrics", "lyrics", "classic"];
+  const tr8 = plan.map((m, i) => ({
+    deezer_id: 9000 + i, title: `T${i}`, title_short: `T${i}`, artist: "A", artists: ["A"], cover: "x", mode: m,
+    lyrics: i === 2 ? v : undefined, // a 4ª (lyrics) está sem letra -> vira outro modo
+  }));
+  await rpc("npl_start_match", c8, OWNER, tr8, 5);
+  const modes = [];
+  for (let i = 1; i <= 5; i++) {
+    s8 = await rpc("npl_get_state", c8);
+    const r = s8.rounds.find((x) => x.round_no === i);
+    modes.push(r.mode);
+    await rpc("npl_skip_round", c8, OWNER, r.id);
+    await rpc("npl_next_round", c8, OWNER, i);
+  }
+  assert.deepEqual(modes.slice(0, 3), ["auction", "classic", "lyrics"], "segue o plano");
+  assert.notEqual(modes[3], "lyrics", "sem letra não cai no modo letra");
+  assert.equal(modes[4], "classic");
+  console.log("ok vários modos");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

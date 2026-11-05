@@ -33,6 +33,8 @@ export type PresenterRoundViewProps = { state: RoomState; round: Round; now: num
 export type ModeDef = {
   id: ModeId;
   label: string;
+  /** emoji do modo (configuração e anúncio na TV) */
+  icon: string;
   description: string;
   stages: StageDef[];
   /** sorteia o ponto de início de cada trecho (guardado na rodada) */

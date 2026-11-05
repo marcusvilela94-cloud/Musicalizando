@@ -369,15 +369,15 @@ async function loadSource(src: MusicSource): Promise<SourcePool> {
  * não engole uma de 20. Com o filtro de versões, descarta ao vivo, acústico,
  * remix, karaokê, covers, regravações… e faixas de coletâneas.
  *
- * Letras (modo "Só pela letra"): "all" = só entram músicas com letra boa
- * (as sem letra são trocadas por outras das mesmas fontes); "some" = busca a
- * letra de todas, mas as sem letra entram mesmo assim (vão para outros modos).
+ * Letras (modo "Só pela letra"): lyricsNeed = quantas músicas COM letra a
+ * partida precisa (as rodadas de letra). As sem letra só entram até completar
+ * as outras (count - lyricsNeed); depois disso, só entram músicas com letra.
  */
-export type LyricsNeed = "none" | "some" | "all";
 /** Limite de músicas consultadas na LRCLIB por lista (para não demorar demais). */
 const MAX_LYRICS_LOOKUPS = 120;
 
-export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true, lyrics: LyricsNeed = "none") {
+export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true, lyricsNeed = 0) {
+  const need = Math.max(0, Math.min(count, Math.floor(lyricsNeed)));
   const warnings: string[] = [];
   const pools: DzTrack[][] = [];
   const results = await Promise.allSettled(sources.map(loadSource));
@@ -417,6 +417,7 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
   const picked: PickedTrack[] = [];
   const gen = candidates();
   let lookups = 0;
+  let without = 0; // aceitas sem letra
   while (picked.length < count && lookups < MAX_LYRICS_LOOKUPS) {
     const batch: DzTrack[] = [];
     while (batch.length < count - picked.length) {
@@ -430,18 +431,22 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
       : batch.map(() => true);
     const verses = await Promise.all(
       batch.map((t, i) => {
-        if (lyrics === "none" || !keep[i]) return null;
+        if (need === 0 || !keep[i]) return null;
         lookups++;
         return versesFor({ title: t.title, titleShort: t.title_short ?? t.title, artist: t.artist?.name ?? "", duration: t.duration }).catch(() => null);
       }),
     );
     batch.forEach((t, i) => {
-      if (!keep[i] || (lyrics === "all" && !verses[i])) return;
-      picked.push(verses[i] ? { ...toPicked(t), lyrics: verses[i]! } : toPicked(t));
+      if (!keep[i] || picked.length >= count) return;
+      if (verses[i]) picked.push({ ...toPicked(t), lyrics: verses[i]! });
+      else if (without < count - need) {
+        without++;
+        picked.push(toPicked(t));
+      }
     });
   }
 
-  if (picked.length < count && picked.length > 0 && lyrics !== "all") {
+  if (picked.length < count && picked.length > 0 && need === 0) {
     warnings.push(`Só encontrei ${picked.length} músicas com prévia nas fontes escolhidas.`);
   }
   return { tracks: shuffle(picked), warnings, withLyrics: picked.filter((t) => t.lyrics).length };

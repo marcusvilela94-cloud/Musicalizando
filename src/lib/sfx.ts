@@ -8,7 +8,7 @@ import type { SfxVolume } from "./types";
 type Wave = OscillatorType;
 
 /** Duração (s) de cada efeito, para a música esperar o efeito acabar. */
-export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.95, tick: 0.08, reveal: 1.1, fanfare: 2.4, bid: 0.45, pass: 0.25, sudden: 2.2 } as const;
+export const SFX_LEN = { buzz: 0.35, correct: 0.75, wrong: 0.95, tick: 0.08, reveal: 1.1, fanfare: 2.4, bid: 0.45, pass: 0.25, sudden: 2.2, mode: 0.9 } as const;
 
 export type SfxName = keyof typeof SFX_LEN;
 
@@ -218,6 +218,11 @@ export class Sfx {
         break;
       case "pass": // "Pode tocar!": bipe curto descendo
         this.tone(660, 0, 0.18, { type: "sine", gain: 0.14, to: 440 });
+        break;
+      case "mode": // anúncio do modo: varredura rápida subindo + "ding" duplo
+        this.tone(300, 0, 0.35, { type: "sawtooth", gain: 0.07, to: 1200, filter: 3000 });
+        this.tone(NOTE(84), 0.3, 0.3, { type: "triangle", gain: 0.2 });
+        this.tone(NOTE(91), 0.45, 0.45, { type: "triangle", gain: 0.2 });
         break;
       case "sudden": { // "MORTE SÚBITA!": tambor grave + três acordes menores descendo (dramático)
         for (const at of [0, 0.16, 0.32]) this.tone(70, at, 0.18, { type: "sine", gain: 0.45, to: 40 });

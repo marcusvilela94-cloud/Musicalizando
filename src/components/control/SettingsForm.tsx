@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import type { ArtistLevel, MusicSource, RoomSettings, RoomState } from "@/lib/types";
+import type { ArtistLevel, ModeId, MusicSource, RoomSettings, RoomState } from "@/lib/types";
+import { getMode } from "@/modes";
+import { MODE_LIST, enabledModes, type ModeOrder } from "@/modes/schedule";
 
 const PRESET_SOURCES: MusicSource[] = [{ type: "preset", id: "top_brasil", label: "Top Brasil" }];
 const sameSource = (a: MusicSource, b: MusicSource) => a.type === b.type && a.id === b.id;
@@ -23,14 +25,24 @@ const fansLabel = (n: number) =>
       ? `${Math.round(n / 1000)} mil fãs`
       : `${n} fãs`;
 
-type GameMode = "classic" | "auction" | "lyrics" | "mix";
-const MODE_HINTS: Record<GameMode, string> = {
+const MODE_HINTS: Record<ModeId, string> = {
   classic: "Trechos crescentes (1s, 2s, 4s…): quem apertar EU SEI! primeiro responde. Quanto antes, mais pontos.",
   auction:
     "A TV dá uma dica (artista, ou gênero e ano). Os times dão lances de quantos segundos precisam (começa em 20s); o menor lance ouve primeiro. Acerto vale 100. Sem penalidade.",
   lyrics:
     "Sem som: a TV mostra trechos da letra (título e artista viram ___), um verso por vez. Quanto menos versos, mais pontos: 100, 75, 50, 30 e 15 no refrão. A prévia toca na revelação.",
-  mix: "Cada rodada sorteia Clássico, Leilão ou Só pela letra (músicas sem letra não caem no modo letra).",
+};
+
+const ORDER_HINTS: Record<ModeOrder, string> = {
+  alternate: "Os modos se revezam em ordem fixa, com o mesmo número de músicas para cada um.",
+  random: "Cada rodada sorteia um dos modos ligados.",
+  blocks: "Primeiro todas as rodadas do 1º modo da lista, depois as do 2º… dividindo as músicas igualmente.",
+};
+
+/** Em quais modos cada opção vale (para esconder ou etiquetar). */
+const APPLIES = {
+  classicLike: ["classic", "lyrics"] as ModeId[], // O que vale, bloqueio, penalidade
+  clips: ["classic"] as ModeId[], // Trechos
 };
 
 /**
@@ -66,27 +78,24 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
   const setLevel = (src: MusicSource, level: ArtistLevel) =>
     update({ sources: settings.sources.map((s) => (sameSource(s, src) && s.type === "artist" ? { ...s, level } : s)) });
 
-  // "Misturar" = sorteia o modo de cada rodada entre Clássico e Leilão
-  const gameMode: GameMode =
-    settings.modeSelection === "random" && settings.modePool.length > 1
-      ? "mix"
-      : settings.mode === "auction" || settings.mode === "lyrics"
-        ? settings.mode
-        : "classic";
-  // opções que só valem no Clássico: escondidas no Leilão (o valor fica guardado),
-  // com etiqueta "só no Clássico" ao misturar
-  // "O que vale", bloqueio e penalidade valem no Clássico e no Só pela letra;
-  // "Trechos" só no Clássico
-  const showClassic = gameMode !== "auction";
-  const classicTag = gameMode === "mix" ? "não vale no Leilão" : undefined;
-  const showClips = gameMode === "classic" || gameMode === "mix";
-  const clipsTag = gameMode === "mix" ? "só no Clássico" : undefined;
-  const setGameMode = (m: GameMode) =>
-    update(
-      m === "mix"
-        ? { modeSelection: "random", modePool: ["classic", "auction", "lyrics"] }
-        : { mode: m, modeSelection: "fixed", modePool: [m] },
-    );
+  // modos ligados (pelo menos um); 2 ou mais = a partida mistura
+  const on = enabledModes(settings);
+  const toggleMode = (m: ModeId) => {
+    const next = on.includes(m) ? on.filter((x) => x !== m) : MODE_LIST.filter((x) => x === m || on.includes(x));
+    if (!next.length) return; // não deixa desligar o último
+    update({ modePool: next, mode: next[0], modeSelection: next.length > 1 ? "random" : "fixed" });
+  };
+  const order: ModeOrder = settings.modeOrder ?? "alternate";
+  // opção aparece se vale para algum modo ligado; etiqueta quando vale só para alguns
+  const applies = (modes: ModeId[]) => on.some((m) => modes.includes(m));
+  const tagFor = (modes: ModeId[]) => {
+    const yes = on.filter((m) => modes.includes(m));
+    return yes.length && yes.length < on.length ? `só no ${yes.map((m) => getMode(m).label).join(" e no ")}` : undefined;
+  };
+  const showClassic = applies(APPLIES.classicLike);
+  const classicTag = tagFor(APPLIES.classicLike);
+  const showClips = applies(APPLIES.clips);
+  const clipsTag = tagFor(APPLIES.clips);
 
   return (
     <div className="flex w-full flex-col gap-4 text-left">
@@ -140,9 +149,39 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="flex flex-col gap-3 md:col-span-2">
-          <h2 className="font-display text-xl font-semibold">Modo de jogo</h2>
-          <Segmented value={gameMode} options={[["classic", "🎵 Clássico"], ["auction", "🔨 Leilão"], ["lyrics", "📝 Só pela letra"], ["mix", "🎲 Misturar"]]} onChange={setGameMode} />
-          <p className="text-sm text-white/60">{MODE_HINTS[gameMode]}</p>
+          <h2 className="font-display text-xl font-semibold">Modos de jogo</h2>
+          <div className="flex flex-col gap-2">
+            {MODE_LIST.map((m) => {
+              const def = getMode(m);
+              const active = on.includes(m);
+              const last = active && on.length === 1;
+              return (
+                <button
+                  key={m}
+                  onClick={() => toggleMode(m)}
+                  disabled={last}
+                  title={last ? "Pelo menos um modo precisa ficar ligado" : undefined}
+                  className={`flex items-start gap-3 rounded-2xl px-4 py-3 text-left transition ${
+                    active ? "bg-yellow-300 text-violet-950" : "bg-white/10 hover:bg-white/20"
+                  } ${last ? "cursor-default" : ""}`}
+                >
+                  <span className="mt-0.5 font-display text-2xl">{active ? "☑" : "☐"}</span>
+                  <span className="flex flex-col">
+                    <span className="font-display text-xl">{def.icon} {def.label}</span>
+                    <span className={`text-sm ${active ? "text-violet-950/70" : "text-white/60"}`}>{MODE_HINTS[m]}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {on.length > 1 && (
+            <div className="flex flex-col gap-2 rounded-2xl bg-black/20 p-3">
+              <p className="font-display text-lg">Ordem dos modos</p>
+              <Segmented value={order} onChange={(v) => update({ modeOrder: v })}
+                options={[["alternate", "Alternando"], ["random", "Sorteado"], ["blocks", "Em blocos"]]} />
+              <p className="text-sm text-white/60">{ORDER_HINTS[order]}</p>
+            </div>
+          )}
         </Card>
         <Card className="flex flex-col gap-3">
           <h2 className="font-display text-xl font-semibold">Número de músicas: {settings.rounds}</h2>

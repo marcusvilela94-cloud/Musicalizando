@@ -11,6 +11,7 @@ import { AuctionPresenterView, AuctionTvView } from "./AuctionTvView";
 export const auctionMode: ModeDef = {
   id: "auction",
   label: "Leilão",
+  icon: "🔨",
   description: "Com uma dica, os times apostam quantos segundos precisam. Menor lance ouve primeiro.",
   stages: [],
   pickOffsets: () => [],

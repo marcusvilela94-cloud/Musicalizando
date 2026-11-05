@@ -5,17 +5,20 @@ import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import type { Player, RoomState, Team } from "@/lib/types";
+import { getMode } from "@/modes";
+import { enabledModes } from "@/modes/schedule";
 import { LyricsShortNotice, useMatchStarter } from "./matchStart";
 import { playerLabel, teamLabel } from "@/lib/icons";
 
 export function settingsSummary(state: RoomState) {
   const s = state.room.settings;
   // só Leilão: as opções do clássico não valem
-  const auctionOnly = s.modeSelection !== "random" && s.mode === "auction";
-  const lyricsOnly = s.modeSelection !== "random" && s.mode === "lyrics";
+  const on = enabledModes(s);
+  const auctionOnly = on.length === 1 && on[0] === "auction";
+  const orderLabel = { alternate: "alternando", random: "sorteados", blocks: "em blocos" }[s.modeOrder ?? "alternate"];
   return [
     `${s.rounds} músicas`,
-    lyricsOnly ? "só pela letra" : s.modeSelection === "random" ? "modos misturados" : s.mode === "auction" ? "leilão" : "",
+    on.map((m) => getMode(m).label).join(" + ") + (on.length > 1 ? ` (${orderLabel})` : ""),
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
     auctionOnly ? "" : s.scoring === "title" ? "só a música" : "artista e música",
     s.roomStyle === "host" ? (s.answerMode === "spoken" ? "resposta falada" : "resposta digitada") : "resposta digitada",

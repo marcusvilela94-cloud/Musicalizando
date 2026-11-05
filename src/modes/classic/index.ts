@@ -6,6 +6,7 @@ import { CLASSIC_STAGES } from "./stages";
 export const classicMode: ModeDef = {
   id: "classic",
   label: "Clássico",
+  icon: "🎵",
   description: "Trechos crescentes da música: quanto antes acertar, mais pontos.",
   stages: CLASSIC_STAGES,
   pickOffsets: (duration) => pickStageOffsets(CLASSIC_STAGES, duration),

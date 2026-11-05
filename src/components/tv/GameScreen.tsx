@@ -33,6 +33,7 @@ import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
+import { enabledModes } from "@/modes/schedule";
 import type { TvRoundViewProps } from "@/modes/types";
 import type { TvCtx } from "./TvApp";
 import { playerLabel, teamLabel } from "@/lib/icons";
@@ -41,6 +42,8 @@ import { playerLabel, teamLabel } from "@/lib/icons";
 const REVEAL_MUSIC_DELAY_MS = 1200;
 /** Quanto tempo o anúncio "MORTE SÚBITA!" fica na tela. */
 const SUDDEN_ANNOUNCE_MS = 4500;
+/** Anúncio do modo da rodada (só com 2+ modos ligados). */
+const MODE_ANNOUNCE_MS = 2600;
 
 export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const round = currentRound(state);
@@ -214,6 +217,16 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     sfx.play("sudden");
   }, [tbFresh, roundId, audio, sfx]);
 
+  // ---- vários modos ligados: anuncia o modo de cada rodada ("LEILÃO!") ----
+  const multiMode = enabledModes(state.room.settings).length > 1;
+  const modeFresh = multiMode && !tb && !!round && now - Date.parse(round.created_at) < MODE_ANNOUNCE_MS;
+  const announcedMode = useRef<string | null>(null);
+  useEffect(() => {
+    if (!modeFresh || !roundId || announcedMode.current === roundId) return;
+    announcedMode.current = roundId;
+    sfx.play("mode");
+  }, [modeFresh, roundId, sfx]);
+
   // ---- revelação: efeito sonoro e depois a música (pausa para e continua de onde parou) ----
   const reveal = useRef<{ roundId: string; pos: number; done: boolean; announced: boolean } | null>(null);
   useEffect(() => {
@@ -305,6 +318,7 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       {flash && round.status !== "revealed" && round.status !== "scoreboard" && <DecisionFlash state={state} attempt={flash} tiebreak={!!tb} />}
 
       {tb && tbFresh && <SuddenDeathAnnounce state={state} tb={tb} />}
+      {modeFresh && <ModeAnnounce mode={round.mode} />}
 
       {paused && (
         <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/60">
@@ -329,6 +343,11 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
         <div className="font-display text-3xl">
           Rodada <b className="text-yellow-300">{round.round_no}</b>
           <span className="text-white/50"> / {state.room.total_rounds}</span>
+          {enabledModes(state.room.settings).length > 1 && (
+            <span className="ml-3 rounded-full bg-white/10 px-3 py-0.5 text-2xl">
+              {getMode(round.mode).icon} {getMode(round.mode).label}
+            </span>
+          )}
         </div>
       )}
       <div className="ml-auto flex flex-wrap gap-2">
@@ -678,5 +697,17 @@ function TiebreakResult({ state, round, tb }: { state: RoomState; round: Round; 
       {round.skipped ? "Música pulada" : "Ninguém acertou 😅"}
       {tiebreakLeft(tb).length >= 2 && <span className="block text-2xl">Vem mais uma música de desempate!</span>}
     </p>
+  );
+}
+
+/** Tela rápida com o modo da próxima rodada ("LEILÃO!"). */
+function ModeAnnounce({ mode }: { mode: string }) {
+  const def = getMode(mode);
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-violet-950/85">
+      <p className="npl-pop text-[10rem] leading-none">{def.icon}</p>
+      <p className="npl-pop font-display text-9xl font-bold uppercase text-yellow-300">{def.label}!</p>
+      <p className="font-display text-3xl text-white/80">{def.description}</p>
+    </div>
   );
 }
