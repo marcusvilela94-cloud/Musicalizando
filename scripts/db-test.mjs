@@ -1020,6 +1020,47 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok continuar a letra");
 }
 
+// ---------- cache da sincronização e preparação em segundo plano ----------
+{
+  const { code: cs } = await rpc("npl_create_room", OWNER, { modeSelection: "random", modePool: ["classic", "continue"], rounds: 5 });
+  const entry = { deezer_id: 777, algo: 1, ok: true, offset: 48.2, line_count: 30, lines: [{ i: 3, s: 4.3, e: 8.9, u: 8.1 }], eligible: [5, 7], confidence: 92 };
+  await fails(rpc("npl_sync_put", cs, P(80), entry), "not_owner");
+  await rpc("npl_sync_put", cs, OWNER, entry);
+  await rpc("npl_sync_put", cs, OWNER, { ...entry, deezer_id: 778, ok: false, reason: "pouca música antes", lines: [], eligible: [] });
+  const got = await rpc("npl_sync_get", [777, 778, 999]);
+  assert.equal(got.length, 2);
+  assert.equal(got.find((c) => c.deezer_id == 777).eligible[0], 5);
+  assert.equal(got.find((c) => c.deezer_id == 778).ok, false, "descartada também fica no cache");
+  assert.ok(!JSON.stringify(got).includes("text"), "sem letra no cache");
+  await db.exec("set role anon");
+  await fails(db.query("select * from public.npl_sync_cache"), "permission denied");
+  await db.exec("reset role");
+
+  await rpc("npl_join", cs, P(81), "Ana");
+  await rpc("npl_join", cs, P(82), "Bia");
+  let ss = await rpc("npl_get_state", cs);
+  await rpc("npl_set_team", cs, P(81), ss.teams[0].id);
+  await rpc("npl_set_team", cs, P(82), ss.teams[1].id);
+  const tr = [1, 2, 3, 4].map((i) => ({ deezer_id: 9700 + i, title: `T${i}`, title_short: `T${i}`, artist: "A", artists: ["A"], cover: "x", mode: i === 3 ? "continue" : "classic" }));
+  const st = await rpc("npl_start_match", cs, OWNER, tr, 4);
+  const plan = { lines: [{ text: "linha um aqui", start: 1, end: 5 }, { text: "linha dois aqui", start: 5, end: 11 }], hidden: { text: "a linha escondida certa", start: 12, end: 15 }, after: [] };
+  const filled = await rpc("npl_fill_cont", cs, OWNER, st.match_no, 3, { deezer_id: 5555, title: "Nova", title_short: "Nova", artist: "B", artists: ["B"], cover: "y", cont: plan }, { active: true, done: 1, total: 1 });
+  assert.equal(filled.ok, true, "rodada futura recebe a música preparada");
+  ss = await rpc("npl_get_state", cs);
+  assert.deepEqual(ss.room.prep, { active: true, done: 1, total: 1 });
+  assert.equal((await rpc("npl_fill_cont", cs, OWNER, st.match_no + 1, 4, null, null)).ok, false, "outra partida não mexe");
+  assert.equal((await rpc("npl_fill_cont", cs, OWNER, st.match_no, 1, { deezer_id: 1, title: "x", artist: "y", cont: plan }, null)).ok, false, "rodada que já começou não muda");
+  // rodada 3 vira "continuar"; a 4 (sem preparo) cai em outro modo
+  for (let i = 1; i <= 4; i++) {
+    ss = await rpc("npl_get_state", cs);
+    const r = ss.rounds.find((x) => x.round_no === i);
+    if (i === 3) assert.equal(r.mode, "continue", "música preparada em segundo plano");
+    await rpc("npl_skip_round", cs, OWNER, r.id);
+    await rpc("npl_next_round", cs, OWNER, i);
+  }
+  console.log("ok cache de sincronização");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

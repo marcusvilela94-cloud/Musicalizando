@@ -392,6 +392,11 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
           </TeamChip>
         ))}
       </div>
+      {state.room.prep?.active && (state.room.prep.total ?? 0) > 0 && (
+        <div className="rounded-xl bg-white/5 px-3 py-1 text-sm text-white/60" title="Preparando as músicas do “Continuar a letra” em segundo plano">
+          🎤 preparando {state.room.prep.done ?? 0}/{state.room.prep.total}
+        </div>
+      )}
       <div className="rounded-xl bg-white/10 px-3 py-1 font-display text-xl">Sala {state.room.code}</div>
     </div>
   );

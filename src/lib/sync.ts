@@ -239,27 +239,55 @@ const PREVIEW_SECS = 30;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 /**
- * Decide se a música serve para o modo e qual linha esconder:
+ * Análise da música para o modo (vai para o cache npl_sync_cache):
  *  - offset confiável: 2+ linhas ouvidas com confiança >= 70% e todas
  *    concordando (lrc - início) com a mediana em até 1 s;
  *  - todas as linhas da prévia usam os tempos do LRC (com o offset);
  *  - o trecho começa na 1ª linha COMPLETA da prévia e vai até a escondida;
- *  - linha escondida: pelo menos 8 s de música antes dela (desde o início do
- *    trecho) e 6 s depois do fim (para cantar junto), 4 a 12 palavras, até
+ *  - linhas elegíveis para esconder: pelo menos 8 s de música antes (desde o
+ *    início do trecho) e 6 s depois do fim do canto, 4 a 12 palavras, até
  *    ~3,5 palavras/s, não é coro entre parênteses, onomatopeia nem o nome do
- *    artista, confiança >= 70%. Preferência: as que mais se repetem (refrão).
+ *    artista, confiança >= 70%. Ordem de preferência: as que mais se repetem
+ *    (refrão), diferentes da anterior, mais confiança.
+ * Guarda só tempos e índices (nada de letra).
  */
 const MIN_BEFORE = 8;
 const MIN_AFTER = 6;
+/** Mudou a regra acima? Aumente: o cache antigo é refeito. */
+export const ALGO_VERSION = 1;
 
-function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): ContinueVerdict {
-  if (!lines.length || lines.some((l) => l.lrc === null)) return { ok: false, reason: "sem letra sincronizada (LRC)" };
+export type SyncEntry = {
+  algo: number;
+  ok: boolean;
+  reason?: string;
+  offset: number | null;
+  /** nº de linhas da letra sincronizada (se a letra do LRCLIB mudar, refaz) */
+  line_count: number;
+  /** linhas na prévia: índice, início/fim (LRC) e fim do canto ouvido */
+  lines: { i: number; s: number; e: number; u: number }[];
+  eligible: number[];
+  confidence: number | null;
+};
+
+const fail = (reason: string, line_count = 0): SyncEntry => ({
+  algo: ALGO_VERSION,
+  ok: false,
+  reason,
+  offset: null,
+  line_count,
+  lines: [],
+  eligible: [],
+  confidence: null,
+});
+
+function continueEntry(lines: Line[], aligned: SyncLine[], artist: string): SyncEntry {
+  if (!lines.length || lines.some((l) => l.lrc === null)) return fail("sem letra sincronizada (LRC)", lines.length);
   const good = aligned.filter((l) => l.source === "audio" && !l.cut && l.confidence >= 70 && lines[l.idx]?.lrc !== null);
-  if (good.length < 2) return { ok: false, reason: `poucas linhas ouvidas com confiança (${good.length})` };
+  if (good.length < 2) return fail(`poucas linhas ouvidas com confiança (${good.length})`, lines.length);
   const d = good.map((l) => lines[l.idx].lrc! - l.start).sort((x, y) => x - y);
   const offset = d[Math.floor(d.length / 2)];
   const worst = Math.max(...d.map((x) => Math.abs(x - offset)));
-  if (worst > 1) return { ok: false, reason: `linhas discordam do LRC em até ${worst.toFixed(1)} s` };
+  if (worst > 1) return fail(`linhas discordam do LRC em até ${worst.toFixed(1)} s`, lines.length);
 
   // tempos de todas as linhas na prévia (pelo LRC)
   const at = lines.map((l, i) => {
@@ -268,16 +296,15 @@ function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): Con
     const end = next !== undefined && next !== null ? next - offset : start + Math.min(6, l.tokens.length * 0.45);
     return { start, end };
   });
-  // 1ª linha completa (que começa dentro da prévia)
-  const first = at.findIndex((t) => t.start >= 0.05);
-  if (first < 0) return { ok: false, reason: "nenhuma linha completa na prévia" };
-  const clipStart = at[first].start;
-
   const conf = new Map(aligned.filter((l) => l.source === "audio").map((l) => [l.idx, l.confidence]));
   // fim real do canto da linha: última palavra ouvida (ou estimativa), nunca depois da próxima linha
   const audioEnd = new Map(aligned.filter((l) => l.source === "audio" && l.sungEnd !== undefined).map((l) => [l.idx, l.sungEnd!]));
   const sungEnd = (i: number) =>
     Math.min(at[i].end, audioEnd.get(i) !== undefined && audioEnd.get(i)! > at[i].start ? audioEnd.get(i)! + 0.2 : at[i].start + lines[i].tokens.length * 0.45 + 0.5);
+
+  const first = at.findIndex((t) => t.start >= 0.05);
+  if (first < 0) return fail("nenhuma linha completa na prévia", lines.length);
+  const clipStart = at[first].start;
   const count = new Map<string, number>();
   for (const l of lines) count.set(l.tokens.join(" "), (count.get(l.tokens.join(" ")) ?? 0) + 1);
   const artistKey = fold(artist);
@@ -286,8 +313,8 @@ function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): Con
   const why = new Map<string, number>();
   const no = (r: string) => void why.set(r, (why.get(r) ?? 0) + 1);
   lines.forEach((l, i) => {
-    if (i <= first) return;
-    const { start } = at[i];
+    if (i <= first + 1) return; // pelo menos 2 linhas de contexto
+    const start = at[i].start;
     const end = sungEnd(i);
     const words = l.tokens.length;
     const k = l.tokens.join(" ");
@@ -301,29 +328,47 @@ function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): Con
     if ((conf.get(i) ?? 0) < 70) return no("confiança baixa");
     cands.push({ i, rep: count.get(k) ?? 1, same: lines[i - 1].tokens.join(" ") === k, conf: conf.get(i) ?? 0 });
   });
+  cands.sort((a, b) => b.rep - a.rep || Number(a.same) - Number(b.same) || b.conf - a.conf);
+  // linhas na prévia (com sobra antes, para achar a 1ª completa)
+  const inPreview = lines
+    .map((_, i) => i)
+    .filter((i) => at[i].start > -15 && at[i].start < PREVIEW_SECS)
+    .map((i) => ({ i, s: r2(at[i].start), e: r2(Math.min(PREVIEW_SECS, at[i].end)), u: r2(Math.min(PREVIEW_SECS, sungEnd(i))) }));
+  const confidence = Math.round(good.reduce((acc, l) => acc + l.confidence, 0) / good.length);
   if (!cands.length) {
     const top = [...why.entries()].sort((a, b) => b[1] - a[1]).map(([r]) => r).slice(0, 2).join(", ");
-    return { ok: false, reason: `nenhuma linha serve${top ? ` (${top})` : ""}` };
+    return { ...fail(`nenhuma linha serve${top ? ` (${top})` : ""}`, lines.length), offset: r2(offset), lines: inPreview, confidence };
   }
-  // preferência: as que mais se repetem (refrão), depois diferente da anterior, depois confiança
-  cands.sort((a, b) => b.rep - a.rep || Number(a.same) - Number(b.same) || b.conf - a.conf);
-  const h = cands[0].i;
-  const ctx: ContLine[] = [];
-  for (let j = first; j < h; j++) ctx.push({ text: lines[j].text, start: r2(at[j].start), end: r2(at[j].end) });
-  // as seguintes, até o fim da prévia (karaokê de "cantar junto")
-  const after: ContLine[] = [];
-  for (let j = h + 1; j < lines.length && at[j].start < PREVIEW_SECS - 0.3; j++) {
-    after.push({ text: lines[j].text, start: r2(at[j].start), end: r2(Math.min(PREVIEW_SECS, at[j].end)) });
+  return { algo: ALGO_VERSION, ok: true, offset: r2(offset), line_count: lines.length, lines: inPreview, eligible: cands.slice(0, 10).map((c) => c.i), confidence };
+}
+
+/** Monta o plano (com o texto da letra atual) a partir da análise/cache. */
+function planFromEntry(e: SyncEntry, lines: Line[]): ContinueVerdict {
+  if (!e.ok) return { ok: false, reason: e.reason ?? "não serve" };
+  const t = new Map(e.lines.map((x) => [x.i, x]));
+  const first = e.lines.filter((x) => x.s >= 0.05).sort((a, b) => a.s - b.s)[0];
+  if (!first) return { ok: false, reason: "nenhuma linha completa na prévia" };
+  for (const h of e.eligible) {
+    const hid = t.get(h);
+    if (!hid || !lines[h]) continue;
+    const ctx: ContLine[] = [];
+    for (let j = first.i; j < h; j++) {
+      const x = t.get(j);
+      if (x && lines[j]) ctx.push({ text: lines[j].text, start: x.s, end: x.e });
+    }
+    if (ctx.length < 2) continue;
+    const after: ContLine[] = [];
+    for (let j = h + 1; t.has(j) && t.get(j)!.s < PREVIEW_SECS - 0.3; j++) {
+      const x = t.get(j)!;
+      if (lines[j]) after.push({ text: lines[j].text, start: x.s, end: x.e });
+    }
+    return {
+      ok: true,
+      offset: e.offset ?? 0,
+      plan: { lines: ctx.slice(-12), hidden: { text: lines[h].text, start: hid.s, end: hid.u }, after: after.slice(0, 12) },
+    };
   }
-  return {
-    ok: true,
-    offset: r2(offset),
-    plan: {
-      lines: ctx.slice(-12),
-      hidden: { text: lines[h].text, start: r2(at[h].start), end: r2(Math.min(PREVIEW_SECS, sungEnd(h))) },
-      after: after.slice(0, 12),
-    },
-  };
+  return { ok: false, reason: "nenhuma linha serve" };
 }
 
 type Analysis = { lines: Line[]; aligned: SyncLine[]; result: SyncResult };
@@ -346,15 +391,35 @@ async function runAnalysis(t: { preview: string; titleShort: string; artist: str
   };
 }
 
-/** /lab/sync: alinhamento + o que o modo "Continuar a letra" decidiria. */
+/** /lab/sync: alinhamento + o que o modo "Continuar a letra" decidiria (sempre analisa de novo). */
 export async function analyzeTrack(t: { preview: string; titleShort: string; artist: string; duration?: number }) {
   const a = await runAnalysis(t);
-  return { ...a.result, continue: decideContinue(a.lines, a.aligned, t.artist) };
+  const entry = continueEntry(a.lines, a.aligned, t.artist);
+  return { ...a.result, continue: planFromEntry(entry, a.lines), entry };
 }
 
-/** Preparação da partida: só o veredito (e o plano) do modo "Continuar a letra". */
-export async function prepareContinue(t: { preview: string; titleShort: string; artist: string; duration?: number }): Promise<ContinueVerdict> {
+type TrackIn = { preview: string; titleShort: string; artist: string; duration?: number };
+
+/**
+ * Preparação da partida: usa o cache (se for da versão atual e a letra do
+ * LRCLIB tiver o mesmo nº de linhas); senão analisa com o Groq.
+ * Devolve o veredito, se veio do cache e a entrada nova para gravar (se houver).
+ */
+export async function prepareContinue(
+  t: TrackIn,
+  cached: SyncEntry | null,
+): Promise<{ verdict: ContinueVerdict; fromCache: boolean; entry: SyncEntry | null }> {
+  const lrc = await fetchLyricsRecord(t.titleShort, t.artist, t.duration).catch(() => null);
+  const lines = lrc ? lyricLines(lrc.plainLyrics, lrc.syncedLyrics) : [];
+  const synced = !!lrc?.syncedLyrics?.trim();
+  if (cached && cached.algo === ALGO_VERSION && cached.line_count === (synced ? lines.length : 0)) {
+    return { verdict: planFromEntry(cached, lines), fromCache: true, entry: null };
+  }
+  if (!lrc || !synced) {
+    const entry = fail("sem letra sincronizada (LRC)", 0);
+    return { verdict: { ok: false, reason: entry.reason! }, fromCache: false, entry };
+  }
   const a = await runAnalysis(t);
-  if (!a.result.hasSynced) return { ok: false, reason: "sem letra sincronizada (LRC)" };
-  return decideContinue(a.lines, a.aligned, t.artist);
+  const entry = continueEntry(a.lines, a.aligned, t.artist);
+  return { verdict: planFromEntry(entry, a.lines), fromCache: false, entry };
 }

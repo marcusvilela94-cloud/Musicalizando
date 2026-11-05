@@ -103,6 +103,18 @@ export const api = {
   /** "Continuar a letra": pula o "cantar junto" e vai para a revelação normal. */
   contSkip: (code: string, owner: string, roundId: string) =>
     call<void>("npl_cont_skip", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
+  /** Cache da sincronização ("Continuar a letra"): quais faixas já foram analisadas. */
+  syncGet: (ids: number[]) => call<{ deezer_id: number; ok: boolean }[]>("npl_sync_get", { p_ids: ids }, false),
+  /** Segundo plano: põe a música preparada numa rodada futura e/ou atualiza o progresso. */
+  fillCont: (code: string, owner: string, match: number, position: number, track: PickedTrack | null, prep: { active: boolean; done: number; total: number } | null) =>
+    call<{ ok: boolean; reason?: string; round_no?: number }>("npl_fill_cont", {
+      p_code: code,
+      p_owner_token: owner,
+      p_match: match,
+      p_position: position,
+      p_track: track,
+      p_prep: prep,
+    }),
   skipRound: (code: string, owner: string, roundId: string) =>
     call<void>("npl_skip_round", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   endRound: (code: string, owner: string, roundId: string) =>
@@ -198,10 +210,12 @@ export const deezer = {
   track: (id: number | string) =>
     getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),
   /** "Continuar a letra": analisa a música (LRC + Groq) e devolve a linha escondida e o contexto. */
-  continuePlan: (id: number | string) =>
-    getJson<{ ok: true; plan: ContinuePlan; offset: number } | { ok: false; reason: string }>(`/api/game/continue/${id}`, {
-      signal: AbortSignal.timeout(60000),
-    }),
+  /** code/owner: para gravar a análise no cache. groq = chamou o Groq (esperar ~3 s antes da próxima). */
+  continuePlan: (id: number | string, code: string, owner: string) =>
+    getJson<({ ok: true; plan: ContinuePlan; offset: number } | { ok: false; reason: string }) & { groq?: boolean }>(
+      `/api/game/continue/${id}?${new URLSearchParams({ code, owner })}`,
+      { signal: AbortSignal.timeout(60000) },
+    ),
   /** Leilão: gênero + ano original (busca no Deezer, feita no servidor). */
   meta: (id: number | string) => getJson<TrackMeta>(`/api/deezer/meta/${id}`, { signal: AbortSignal.timeout(12000) }),
 };

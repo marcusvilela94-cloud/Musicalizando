@@ -87,6 +87,8 @@ export type Room = {
   paused: boolean;
   paused_at: string | null;
   pause_reason: "owner" | "owner_away" | null;
+  /** preparação em segundo plano ("Continuar a letra") */
+  prep?: { active?: boolean; done?: number; total?: number };
   version: number;
   created_at: string;
   last_activity_at: string;
