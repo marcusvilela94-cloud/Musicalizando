@@ -12,17 +12,21 @@ import { playerLabel, teamLabel } from "@/lib/icons";
 
 export function settingsSummary(state: RoomState) {
   const s = state.room.settings;
-  // só Leilão: as opções do clássico não valem
+  // só mostra o que vale para algum modo ligado (mesma tabela da configuração)
   const on = enabledModes(s);
-  const auctionOnly = on.length === 1 && on[0] === "auction";
+  const any = (modes: string[]) => on.some((m) => modes.includes(m));
+  const buzz = (s.turnFormat ?? "buzz") === "buzz";
+  const turnsOn = !buzz && any(["classic", "lyrics", "continue", "quiz_open"]);
+  const buzzRules = buzz && any(["classic", "lyrics", "continue", "quiz_open"]);
   const orderLabel = { alternate: "alternando", random: "sorteados", blocks: "em blocos" }[s.modeOrder ?? "alternate"];
   return [
     `${s.rounds} músicas`,
     on.map((m) => getMode(m).label).join(" + ") + (on.length > 1 ? ` (${orderLabel})` : ""),
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
-    auctionOnly ? "" : s.scoring === "title" ? "só a música" : "artista e música",
+    turnsOn ? (s.passOnWrong !== false ? "um time por vez (passa a vez)" : "um time por vez") : "",
+    !any(["classic", "lyrics"]) ? "" : s.scoring === "title" ? "só a música" : "artista e música",
     s.roomStyle === "host" ? (s.answerMode === "spoken" ? "resposta falada" : "resposta digitada") : "resposta digitada",
-    ...(auctionOnly ? [] : [`bloqueio de ${s.lockSeconds}s após erro`, s.penalty ? `erro −${s.penalty}` : ""]),
+    ...(buzzRules ? [`bloqueio de ${s.lockSeconds}s após erro`, s.penalty ? `erro −${s.penalty}` : ""] : []),
     (s.tiebreak ?? "sudden") === "sudden" ? "desempate: morte súbita" : "empate aceito",
     s.versionFilter === false ? "todas as versões" : "",
   ]

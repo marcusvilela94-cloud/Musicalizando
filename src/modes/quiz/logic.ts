@@ -11,12 +11,6 @@ export function quizOf(r: Round | null | undefined): QuizState | null {
 
 export const isQuizMode = (m: string | null | undefined) => m === "quiz_open" || m === "quiz_choice";
 
-/** Quiz de alternativas: prazo para responder (espelhado no npl_quiz_view). */
-export const CHOICE_SECS = 15;
-
-/** Pontos de um acerto no quiz de alternativas: 100 na hora, 50 no último segundo. */
-export const choicePoints = (ms: number) => 50 + Math.round(50 * Math.max(0, Math.min(1, 1 - ms / (CHOICE_SECS * 1000))));
-
 /** Um só estágio: a pergunta vale 100 (o ano errado por 1 vale 50). */
 export const QUIZ_STAGES: StageDefLike[] = [{ seconds: 30, points: 100 }];
 

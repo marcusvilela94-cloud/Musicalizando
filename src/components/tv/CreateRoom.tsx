@@ -5,6 +5,7 @@ import { Logo } from "@/components/ui";
 import { api } from "@/lib/api";
 import { sharedAudio } from "@/lib/audio";
 import { friendlyError } from "@/lib/errors";
+import { loadLastSettings } from "@/lib/lastSettings";
 import { newOwnerToken, saveOwnerToken } from "@/lib/tokens";
 import type { RoomStyle } from "@/lib/types";
 
@@ -35,7 +36,8 @@ export function CreateRoom() {
       // este clique também libera o som da TV (o navegador exige um clique no aparelho)
       await sharedAudio().unlock().catch(() => {});
       const token = newOwnerToken();
-      const { code } = await api.createRoom(token, { roomStyle });
+      // começa com a última configuração usada neste aparelho
+      const { code } = await api.createRoom(token, { ...loadLastSettings(), roomStyle });
       saveOwnerToken(code, token);
       router.replace(`/tv/${code}`);
     } catch (e) {

@@ -127,14 +127,18 @@ export function QuizChoiceTv({ state, round, now }: TvRoundViewProps) {
       ) : (
         <>
           <OptionGrid q={q} tv />
-          <div className="flex w-full max-w-6xl items-center gap-4">
-            <div className="h-4 flex-1 overflow-hidden rounded-full bg-white/15">
-              <div className="h-full rounded-full bg-yellow-300 transition-[width] duration-200" style={{ width: `${(left / 15000) * 100}%` }} />
+          {end ? (
+            <div className="flex w-full max-w-6xl items-center gap-4">
+              <div className="h-4 flex-1 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-yellow-300 transition-[width] duration-200" style={{ width: `${Math.min(100, (left / Math.max(1, end - start)) * 100)}%` }} />
+              </div>
+              <span className={`w-20 text-right font-display text-6xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse text-rose-300" : ""}`}>
+                {Math.ceil(left / 1000)}
+              </span>
             </div>
-            <span className={`w-20 text-right font-display text-6xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse text-rose-300" : ""}`}>
-              {Math.ceil(left / 1000)}
-            </span>
-          </div>
+          ) : (
+            <p className="font-display text-2xl text-white/70">Sem limite de tempo: fecha quando todos responderem.</p>
+          )}
         </>
       )}
       <div className="flex flex-wrap justify-center gap-2">
@@ -217,7 +221,7 @@ export function QuizChoicePhone({ ctx, round, now, onFeedback }: PhoneRoundViewP
     <div className="flex h-full w-full max-w-md flex-1 flex-col gap-3">
       <div className="flex items-center justify-between rounded-2xl px-4 py-2" style={{ background: team.color, color: textOn(team.color) }}>
         <span className="font-display text-lg">Escolham uma!</span>
-        <span className={`font-display text-4xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</span>
+        {end > 0 && <span className={`font-display text-4xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</span>}
       </div>
       <div className={`grid flex-1 gap-3 ${opts.length > 2 ? "grid-cols-2" : "grid-cols-1"}`}>
         {opts.map((text, i) => {

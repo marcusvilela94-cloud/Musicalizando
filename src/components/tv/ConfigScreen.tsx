@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SettingsForm } from "@/components/control/SettingsForm";
 import { settingsSummary } from "@/components/control/TeamsBoard";
 import { Card, Logo } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import { saveLastSettings } from "@/lib/lastSettings";
 import { isHostStyle } from "@/lib/game";
 import type { RoomState } from "@/lib/types";
 import { JoinPanel } from "./JoinPanel";
@@ -14,6 +15,11 @@ import { playerLabel } from "@/lib/icons";
 export function ConfigScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const [error, setError] = useState<string | null>(null);
   const host = isHostStyle(state);
+  // lembra a configuração neste aparelho (vale também quando o apresentador configura pelo celular)
+  const settingsJson = JSON.stringify(state.room.settings);
+  useEffect(() => {
+    saveLastSettings(JSON.parse(settingsJson));
+  }, [settingsJson]);
   return (
     <main className="grid flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-[1fr_320px] lg:p-10">
       <div className="flex flex-col gap-6">

@@ -994,7 +994,7 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   assert.equal((await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "o que foi prometido")).result, "almost", "quase");
   await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "nada a ver com nada");
   sc = await rpc("npl_get_state", cc);
-  assert.equal(sc.teams.find((t) => t.id === CA).score, 0, "sem penalidade neste modo");
+  assert.equal(sc.teams.find((t) => t.id === CA).score, -50, "penalidade vale no Continuar a letra");
   assert.equal(sc.rounds[0].locks[CA].until, null, "aguardando tocar de novo");
   assert.equal((await rpc("npl_play", cc, OWNER, rc.id, 1, true)).ok, false, "sem 'Mais contexto'");
   const again = await rpc("npl_play", cc, OWNER, rc.id, 1, false); // repetir
@@ -1127,6 +1127,50 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   ({ s: qs, r: qr } = await cur(qc));
   assert.equal(qr.status, "revealed");
   assert.deepEqual(qr.quiz.counts, [0, 0, 0, 0]);
+
+  // o prazo segue o "Tempo de resposta" (10 s) e a pontuação é proporcional a ele
+  {
+    const { c: tc10, teams: t10 } = await mkRoom({ modePool: ["quiz_choice"], mode: "quiz_choice", answerSeconds: 10 }, 2);
+    await rpc("npl_start_match", tc10, OWNER, [quizTrack(1, choice, "quiz_choice")], 1);
+    let { r } = await cur(tc10);
+    await rpc("npl_round_begin", tc10, OWNER, r.id, [], [], {});
+    ({ r } = await cur(tc10));
+    assert.equal(r.quiz.secs, 10);
+    const span = Date.parse(r.quiz.deadline) - Date.parse(r.quiz.starts_at);
+    assert.ok(Math.abs(span - 10000) < 50, `prazo de 10 s (${span})`);
+    // respondeu na metade do prazo (5 s de 10): vale 75
+    await db.query("update npl_rounds set quiz = quiz || jsonb_build_object('starts_at', now() - interval '5 seconds') where id = $1", [r.id]);
+    await rpc("npl_quiz_choose", tc10, P(90), r.id, 1);
+    await rpc("npl_quiz_choose", tc10, P(91), r.id, 0);
+    const s = await rpc("npl_get_state", tc10);
+    const sc = s.teams.find((x) => x.id === t10[0]).score;
+    assert.ok(sc >= 74 && sc <= 76, `metade do prazo vale ~75 (${sc})`);
+  }
+  // "Sem limite": sem prazo; só fecha quando todos respondem; referência de 30 s
+  {
+    const { c: tc0, teams: t0 } = await mkRoom({ modePool: ["quiz_choice"], mode: "quiz_choice", answerSeconds: 0 }, 2);
+    await rpc("npl_start_match", tc0, OWNER, [quizTrack(1, choice, "quiz_choice")], 1);
+    let { r } = await cur(tc0);
+    await rpc("npl_round_begin", tc0, OWNER, r.id, [], [], {});
+    ({ r } = await cur(tc0));
+    assert.equal(r.quiz.deadline, undefined, "sem limite: sem prazo");
+    assert.equal(r.quiz.secs, 30);
+    await db.query("update npl_rounds set quiz = quiz || jsonb_build_object('starts_at', now() - interval '15 seconds') where id = $1", [r.id]);
+    await rpc("npl_tick", tc0);
+    ({ r } = await cur(tc0));
+    assert.equal(r.status, "playing", "sem limite: o tempo não fecha a pergunta");
+    // pausa e volta sem prazo não quebra
+    await rpc("npl_pause", tc0, OWNER, true);
+    await rpc("npl_pause", tc0, OWNER, false);
+    ({ r } = await cur(tc0));
+    assert.equal(r.quiz.deadline, undefined);
+    await rpc("npl_quiz_choose", tc0, P(90), r.id, 1);
+    await rpc("npl_quiz_choose", tc0, P(91), r.id, 1);
+    const s = await rpc("npl_get_state", tc0);
+    assert.equal(s.rounds[0].status, "revealed", "todos responderam: revela");
+    const sc = s.teams.find((x) => x.id === t0[0]).score;
+    assert.ok(sc >= 74 && sc <= 76, `15 s de 30 vale ~75 (${sc})`);
+  }
   console.log("ok quiz de alternativas");
 
   // aberto: EU SEI!, ano exato 100, errou por 1 = 50 (encerra), bloqueio corre na hora

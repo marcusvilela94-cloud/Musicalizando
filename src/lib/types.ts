@@ -103,7 +103,8 @@ export type QuizState = {
   options?: string[]; // só no quiz de alternativas
   n?: number;
   starts_at?: string; // alternativas: quando os botões liberam
-  deadline?: string; // alternativas: fim do prazo (15 s)
+  deadline?: string; // alternativas: fim do prazo ("Tempo de resposta"; sem limite = não existe)
+  secs?: number; // alternativas: prazo de referência dos pontos (sem limite = 30)
   answered?: string[]; // times que já responderam
   answer?: string; // revelação
   correct?: number; // revelação (alternativas)
