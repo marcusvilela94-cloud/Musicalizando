@@ -1,33 +1,39 @@
 # Separador de instrumentos (modo "Instrumentos")
 
-Programa que roda **no PC** e separa as prévias do Deezer em bateria, baixo,
-guitarra e voz (Demucs, modelo `htdemucs_6s`, só CPU). O site nunca separa nada:
-ele só coloca pedidos na fila (`npl_stems_queue`) e lê o resultado do cache
-(`npl_stems_cache` + bucket `npl_stems`).
+Programa que separa as prévias do Deezer em bateria, baixo, guitarra e voz
+(Demucs, modelo `htdemucs_6s`, só CPU). Pode rodar **no PC** e/ou **num
+Hugging Face Space** (pasta `space/`), ao mesmo tempo: a fila se divide entre
+eles. O site nunca separa nada: só coloca pedidos na fila e lê o cache.
 
-## Instalar (uma vez)
+O separador **não tem chave do Supabase**: fala só com o jogo, pelas rotas
+`/api/separador/*`, com o `SEPARADOR_TOKEN` (o mesmo que está na Vercel).
+
+## Instalar no PC (uma vez)
 1. Instale o **Python** (3.12 ou mais novo; testado com 3.15): `winget install -e --id Python.Python.3.12`
    (ou pelo python.org, marcando "Add python.exe to PATH").
 2. Dê dois cliques em **`instalar-separador.bat`** (baixa PyTorch CPU + Demucs, ~1 GB no total).
-3. Abra **`separador/.env`** e cole a chave `SUPABASE_SERVICE_ROLE_KEY`
-   (Supabase > Project Settings > API Keys > service_role / secret key).
-   Esse arquivo **não vai para o Git** e a chave **nunca** deve ir para a Vercel.
+3. Abra **`separador/.env`** e preencha `JOGO_URL`, `SEPARADOR_TOKEN` e `SEPARADOR_NOME`
+   (ex.: `PC-Marcus`, é o nome que aparece no jogo). Esse arquivo **não vai para o Git**.
 
 ## Usar
 Dê dois cliques em **`iniciar-separador.bat`** e deixe a janela aberta.
 - Na 1ª vez ele baixa o modelo (~55 MB).
-- A cada 5 s ele olha a fila; a cada 30 s grava o "sinal de vida" (a configuração
-  do jogo mostra "Separador ligado/desligado").
+- A cada 5 s ele pede o próximo pedido ao jogo; a cada 30 s manda o "sinal de vida"
+  (a configuração do jogo mostra quais separadores estão ligados).
 - Cada música leva ~40 s neste PC (CPU, medido).
-- "Pausar fila" / "Limpar fila" (configuração do jogo, Instrumentos) ficam no banco: pausado, ele
-  termina a música atual e não pega outra até "Continuar fila" (não precisa reiniciar o separador).
-  Limpar tira só os pedidos que ainda não começaram; a música atual e o cache ficam.
-- Cache limitado a 200 MB (`CACHE_LIMITE_MB`; o limite definido na página /biblioteca vale mais): passou disso, apaga as usadas há mais tempo — menos as fixadas. Se as fixadas ocuparem o limite inteiro, ele para de preparar até liberar espaço.
+- Dois separadores nunca pegam a mesma música. Se um parar no meio (sem sinal de vida
+  por 3 min), o outro retoma; se os dois chegarem a terminar, só o primeiro vale.
+- "Pausar fila" / "Limpar fila" (configuração do jogo, Instrumentos) valem para todos:
+  pausado, ele termina a música atual e não pega outra até "Continuar fila".
+- Cache limitado a 200 MB (`CACHE_LIMITE_MB`; o limite definido na página /biblioteca vale mais):
+  passou disso, o jogo apaga as usadas há mais tempo — menos as fixadas. Se as fixadas ocuparem
+  o limite inteiro, os separadores param de preparar até liberar espaço.
 - Faixa com volume abaixo de mistura − 16 dB (`LIMIAR_SILENCIO_DB`) é marcada "sem conteúdo"
   (ex.: guitarra em funk) e o jogo pula essa camada. Os níveis medidos aparecem no terminal.
 
-## Trocar o separador depois
-Qualquer outro programa (ex.: um Hugging Face Space) pode substituir este: basta
-usar as mesmas RPCs com a service_role — `npl_stems_claim` (pega o próximo pedido),
-`npl_stems_done` / `npl_stems_fail`, `npl_stems_heartbeat` e `npl_stems_evict` —
-e enviar os MP3 para `npl_stems/<key>/<drums|bass|guitar|vocals>.mp3`. O jogo não muda.
+## Separador na nuvem (Hugging Face Space)
+A pasta `space/` tem o Dockerfile do Space (CPU basic, grátis). Ele usa este mesmo
+`separador.py`, com o nome `HuggingFace` e as variáveis secretas `JOGO_URL` e
+`SEPARADOR_TOKEN`. Quando ninguém está ligado e alguém pede para preparar, o jogo
+acorda o Space (`HF_TOKEN` na Vercel). Para atualizar o Space depois de mudar o
+separador: `node scripts/hf-space.mjs`.

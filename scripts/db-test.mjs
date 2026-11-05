@@ -1425,10 +1425,9 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     assert.equal(rm.removed, 1);
     assert.deepEqual(rm.paths.sort(), Object.values(paths("key-701")).sort(), "arquivos para apagar");
     assert.equal(await rpc("npl_stems_request", sc0, OWNER, [701, 704]), 0, "bloqueadas não entram na fila");
-    await rpc("npl_stems_done", 704, "key-704", paths("key-704"), MB, all4, {});
+    assert.deepEqual(await rpc("npl_stems_done", 704, "key-704", paths("key-704"), MB, all4, {}), { ok: false, reason: "blocked" }, "o servidor apaga os arquivos");
     assert.equal((await rpc("npl_stems_status", [704])).ready.length, 0, "terminou depois de bloqueada: não entra no cache");
     assert.deepEqual((await rpc("npl_stems_status", [701, 704, 703])).blocked.sort(), [701, 704]);
-    assert.equal((await rpc("npl_lib_trash_take")).length, 4);
     assert.deepEqual(await rpc("npl_lib_trash_take"), []);
     lib = await rpc("npl_lib_list");
     assert.deepEqual(lib.blocked.map((b) => b.deezer_id).sort(), [701, 704]);
@@ -1463,6 +1462,55 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     await rpc("npl_sources_used", sc0, OWNER);
     assert.equal((await rpc("npl_recent_sources"))[0].type, "collection");
     await db.exec("delete from npl_stems_cache; delete from npl_stems_queue; delete from npl_stems_blocked; delete from npl_stems_collections; update npl_stems_worker set limit_mb = null");
+
+    // ---------- vários separadores ----------
+    await db.exec("delete from npl_stems_workers; update npl_stems_worker set wake_requested_at = null");
+    let sw = await rpc("npl_stems_status", []);
+    assert.equal(sw.worker.alive, false);
+    assert.equal(sw.global.waking, false);
+    // acordar: só com nenhum ligado, no máximo 1 vez a cada 90 s, só o dono da sala
+    await fails(rpc("npl_stems_wake_mark", sc0, "token-errado"), "");
+    assert.equal(await rpc("npl_stems_wake_mark", sc0, OWNER), true, "acorda");
+    assert.equal(await rpc("npl_stems_wake_mark", sc0, OWNER), false, "já pediu agora há pouco");
+    assert.equal((await rpc("npl_stems_status", [])).global.waking, true, "acordando…");
+    assert.deepEqual(await rpc("npl_stems_heartbeat", { version: "2", current: null }, "HuggingFace"), { paused: false, full: false });
+    sw = await rpc("npl_stems_status", []);
+    assert.equal(sw.global.waking, false, "chegou o sinal de vida");
+    assert.equal(await rpc("npl_stems_wake_mark", sc0, OWNER), false, "já tem um ligado");
+    await rpc("npl_stems_heartbeat", { version: "2", current: "Música X" }, "PC-Marcus");
+    await rpc("npl_stems_heartbeat", {}, "nome inválido; drop table");
+    sw = await rpc("npl_stems_status", []);
+    assert.deepEqual(sw.workers.map((w) => w.name), ["HuggingFace", "PC", "PC-Marcus"], "nome inválido vira PC");
+    assert.equal(sw.global.workers_alive, 3);
+    assert.equal(sw.worker.info.current, "Música X", "resumo mostra quem está separando");
+    // a fila se divide: cada um pega um diferente
+    await rpc("npl_stems_request", sc0, OWNER, [801, 802, 803]);
+    const j1 = await rpc("npl_stems_claim", "PC-Marcus");
+    const j2 = await rpc("npl_stems_claim", "HuggingFace");
+    assert.notEqual(j1.deezer_id, j2.deezer_id, "nunca o mesmo pedido");
+    assert.equal(j1.worker, "PC-Marcus");
+    // em andamento com o dono vivo: ninguém retoma
+    await db.query("update npl_stems_queue set started_at = now() - interval '20 minutes' where deezer_id = $1", [j1.deezer_id]);
+    const j3 = await rpc("npl_stems_claim", "HuggingFace");
+    assert.equal(j3.deezer_id, [801, 802, 803].find((x) => x !== j1.deezer_id && x !== j2.deezer_id), "pega o pendente, não o do PC (vivo)");
+    assert.equal(await rpc("npl_stems_claim", "HuggingFace"), null, "nada mais");
+    // o PC sumiu (sem sinal há 5 min): o outro retoma
+    await db.query("update npl_stems_workers set last_seen = now() - interval '5 minutes' where name = 'PC-Marcus'");
+    const j4 = await rpc("npl_stems_claim", "HuggingFace");
+    assert.equal(j4.deezer_id, j1.deezer_id, "retoma a do separador parado");
+    // o erro do antigo dono não conta mais
+    assert.equal(await rpc("npl_stems_fail", j1.deezer_id, "x", "PC-Marcus"), false);
+    // os dois terminam: só o primeiro vale
+    assert.deepEqual(await rpc("npl_stems_done", j1.deezer_id, "key-a", paths("key-a"), MB, all4, {}, "HuggingFace"), { ok: true });
+    assert.deepEqual(await rpc("npl_stems_done", j1.deezer_id, "key-b", paths("key-b"), MB, all4, {}, "PC-Marcus"), { ok: false, reason: "duplicate" });
+    assert.equal((await sql("select key from npl_stems_cache where deezer_id = $1", [j1.deezer_id]))[0].key, "key-a", "o cache não muda");
+    assert.equal(await rpc("npl_stems_fail", j2.deezer_id, "Prévia indisponível", "HuggingFace"), true);
+    await db.exec("set role anon");
+    await fails(db.query("select public.npl_stems_claim('x')"), "permission denied");
+    await fails(db.query("select public.npl_stems_done(1, 'k', '{}'::jsonb, 1, '{}'::jsonb, '{}'::jsonb, 'x')"), "permission denied");
+    await fails(db.query("select * from public.npl_stems_workers"), "permission denied");
+    await db.exec("reset role");
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue; delete from npl_stems_workers");
 
     // partidas maiores: até 100 músicas
     await rpc("npl_update_settings", sc0, OWNER, { rounds: 100 });

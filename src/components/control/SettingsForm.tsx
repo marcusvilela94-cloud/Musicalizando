@@ -571,11 +571,12 @@ function StemsPanel({
   }, [idsKey]);
 
   const workerOn = !!status?.worker?.alive;
+  const workersOn = (status?.workers ?? []).filter((w) => w.alive);
+  const waking = !workerOn && !!status?.global?.waking;
   const ready = status?.ready.length ?? 0;
   const pending = (status?.queue.pending ?? 0) + (status?.queue.processing ?? 0);
   const errors = status?.queue.error ?? 0;
   const total = ids?.length ?? 0;
-  const current = workerOn && typeof status?.worker?.info?.current === "string" ? (status.worker.info.current as string) : null;
   const mb = (status?.cache.bytes ?? 0) / 1048576;
   const limitMb = (status?.cache.limit_bytes ?? 200 * 1048576) / 1048576;
   const full = !!status?.global?.full;
@@ -616,7 +617,12 @@ function StemsPanel({
     try {
       const have = new Set(status?.ready.map((r) => r.deezer_id));
       const n = await api.stemsRequest(code, token, ids.filter((id) => !have.has(id)), pool?.tracks);
-      setMsg(n ? `${n} música${n === 1 ? "" : "s"} na fila.` : "Nada novo para pedir: as que faltam já estão na fila.");
+      // nenhum separador ligado: acorda o da nuvem
+      const w = !workerOn ? await deezer.wakeSeparator(code, token).catch(() => null) : null;
+      setMsg(
+        (n ? `${n} música${n === 1 ? "" : "s"} na fila.` : "Nada novo para pedir: as que faltam já estão na fila.") +
+          (w?.configured ? " ☁️ Acordando o separador da nuvem…" : ""),
+      );
       setStatus(await api.stemsStatus(ids));
     } catch (e) {
       setMsg(friendlyError(e));
@@ -655,21 +661,31 @@ function StemsPanel({
           />
         </div>
       )}
-      <div className={`rounded-xl px-3 py-2 text-sm ${workerOn ? "bg-emerald-500/15 text-emerald-100" : "bg-rose-500/20 text-rose-100"}`}>
+      <div
+        className={`flex flex-col gap-1 rounded-xl px-3 py-2 text-sm ${
+          workerOn ? "bg-emerald-500/15 text-emerald-100" : waking ? "bg-sky-500/20 text-sky-100" : "bg-rose-500/20 text-rose-100"
+        }`}
+      >
         {status === null ? (
-          "Verificando o separador…"
+          "Verificando os separadores…"
         ) : workerOn ? (
           <>
-            {paused ? "⏸️ Separador ligado, fila pausada" : "🟢 Separador ligado"}
-            {current ? (
-              <>
-                {" "}
-                — separando: <b>{current}</b>
-              </>
-            ) : null}
+            {paused && <span>⏸️ Fila pausada</span>}
+            {(workersOn.length ? workersOn : [{ name: "Separador", info: status.worker?.info ?? {} }]).map((w) => {
+              const cur = typeof w.info?.current === "string" ? (w.info.current as string) : null;
+              return (
+                <span key={w.name}>
+                  🟢 <b>{w.name}</b> ligado
+                  {cur ? <> — separando: <b>{cur}</b></> : paused ? null : " — esperando pedidos"}
+                </span>
+              );
+            })}
+            {workersOn.length > 1 && <span className="text-xs opacity-70">A fila é dividida entre eles automaticamente.</span>}
           </>
+        ) : waking ? (
+          "☁️ Acordando o separador da nuvem… (leva 1 a 3 minutos; os pedidos ficam na fila)"
         ) : (
-          "🔴 Separador desligado — ligue o programa no PC para preparar músicas novas."
+          "🔴 Nenhum separador ligado — ao pedir para preparar, o da nuvem é acordado (ou ligue o programa no PC)."
         )}
       </div>
       {poolError ? (

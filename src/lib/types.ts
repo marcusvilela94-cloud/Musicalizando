@@ -148,6 +148,8 @@ export type StemsState = {
 /** Instrumentos: estado do cache/fila/separador (npl_stems_status). */
 export type StemsStatus = {
   worker: { last_seen: string | null; alive: boolean; info: Record<string, unknown> } | null;
+  /** cada separador (PC, Hugging Face…) que mandou sinal de vida nas últimas 24 h */
+  workers?: { name: string; last_seen: string; alive: boolean; info: Record<string, unknown> }[];
   ready: { deezer_id: number; key: string; audible: Partial<Record<StemName, boolean>> }[];
   queue: Partial<Record<"pending" | "processing" | "error", number>>;
   errors: { deezer_id: number; error: string | null }[];
@@ -159,6 +161,9 @@ export type StemsStatus = {
     paused: boolean;
     /** as fixadas ocupam o limite: o separador não prepara novas */
     full?: boolean;
+    /** pediram para acordar o separador da nuvem e nenhum ligou ainda */
+    waking?: boolean;
+    workers_alive?: number;
     pending: number;
     processing: number;
     current_started_at: string | null;

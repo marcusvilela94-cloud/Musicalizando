@@ -9,6 +9,12 @@ import { isQuizMode } from "@/modes/quiz/logic";
 import { fmtDuration, stemsEta, stemsPlan } from "@/modes/stems/logic";
 import { TURN_MODES, enabledModes, modeSchedule, playingTeamCount } from "@/modes/schedule";
 
+/** Quantas das músicas das fontes já estão prontas no cache. */
+const readyCountOf = (st: Awaited<ReturnType<typeof api.stemsStatus>> | null, pool: PickedTrack[]) => {
+  const ids = new Set(pool.map((t) => t.deezer_id));
+  return (st?.ready ?? []).filter((r) => ids.has(r.deezer_id)).length;
+};
+
 /** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
 const TIEBREAK_RESERVE = 5;
 /** "Continuar a letra": o Groq aceita 20 pedidos/minuto -> uma análise a cada 3,2 s. */
@@ -20,7 +26,7 @@ type Short = {
   have: number;
   want: number;
   /** Instrumentos: por que não dá para preparar agora ("running" = dá: "Esperar preparar") */
-  queue?: "off" | "paused" | "full" | "running";
+  queue?: "off" | "paused" | "full" | "waking" | "running";
   /** Instrumentos: estimativa para a fila andar (segundos) */
   etaSeconds?: number;
 };
@@ -144,6 +150,7 @@ async function prepareMatch(
   let workerOn = false;
   let queuePaused = false;
   let queueFull = false;
+  let cloudWaking = false;
   let stemsEtaS: number | undefined;
   if (wantS) {
     onProgress({ label: "Conferindo os instrumentos prontos…", done: 0, total: 0 });
@@ -154,6 +161,11 @@ async function prepareMatch(
     queueFull = !!st?.global?.full;
     const blocked = new Set(st?.blocked ?? []);
     stemsEtaS = stemsEta(st?.global)?.seconds;
+    // nenhum separador ligado e faltam músicas: acorda o da nuvem (Hugging Face)
+    if (!workerOn && readyCountOf(st, srcPool) < wantS) {
+      const w = await deezer.wakeSeparator(code, token).catch(() => null);
+      cloudWaking = !!w?.configured;
+    }
     const readyMap = new Map((st?.ready ?? []).map((r) => [r.deezer_id, r]));
     const mixed = [...srcPool].sort(() => Math.random() - 0.5);
     stemsReady = mixed
@@ -165,7 +177,7 @@ async function prepareMatch(
   const haveS = stemsReady.length;
   // padrão: só as prontas (não espera a fila). "Esperar preparar" (com o separador
   // ligado e a fila andando): as que faltam são preparadas em segundo plano
-  const queueRuns = workerOn && !queuePaused && !queueFull;
+  const queueRuns = (workerOn || cloudWaking) && !queuePaused && !queueFull;
   const waitS = waitStems && queueRuns;
   const pendingS = waitS ? wantS - haveS : 0;
 
@@ -185,7 +197,7 @@ async function prepareMatch(
       mode: "stems",
       have: haveS,
       want: wantS,
-      queue: !workerOn ? "off" : queuePaused ? "paused" : queueFull ? "full" : "running",
+      queue: queuePaused ? "paused" : queueFull ? "full" : workerOn ? "running" : cloudWaking ? "waking" : "off",
       etaSeconds: stemsEtaS,
     });
   const only = modes.length === 1 && short.length > 0;
@@ -417,12 +429,16 @@ async function runStemsBackground(code: string, token: string, match: number, bg
   const used = new Set<number>();
   await api.stemsRequest(code, token, ids, want).catch(() => 0);
   await api.fillStems(code, token, match, 0, null, { active: true, done, total }).catch(() => {});
+  // nenhum separador ligado: acorda o da nuvem (e insiste a cada ~1 min enquanto ninguém ligar)
+  void deezer.wakeSeparator(code, token).catch(() => null);
   const t0 = Date.now();
+  let polls = 0;
   while (queue.length && Date.now() - t0 < STEMS_GIVE_UP_MS) {
     await new Promise((r) => setTimeout(r, STEMS_POLL_MS));
     if (my !== stemsRun) return;
     const st = await api.stemsStatus(ids).catch(() => null);
     if (!st) continue;
+    if (!st.worker?.alive && ++polls % 10 === 0) void deezer.wakeSeparator(code, token).catch(() => null);
     for (const r of st.ready) {
       if (used.has(r.deezer_id)) continue;
       while (queue.length && queue[0] <= roundNo) queue.shift(); // a rodada já começou: ficou com outro modo
@@ -539,6 +555,7 @@ const STEMS_WHY: Record<NonNullable<Short["queue"]>, string> = {
   paused: "e a fila do separador está pausada",
   full: "e a biblioteca está cheia de músicas fixadas (libere espaço em /biblioteca)",
   running: "(o separador ainda está preparando as outras)",
+  waking: "(acordando o separador da nuvem para preparar as outras)",
 };
 const SHORT_TEXT: Record<Short["mode"], (x: Short) => string> = {
   stems: ({ have: n, want, queue }) =>
@@ -552,7 +569,7 @@ const SHORT_TEXT: Record<Short["mode"], (x: Short) => string> = {
 export function LyricsShortNotice({ m, compact }: { m: MatchStarter; compact?: boolean }) {
   const p = m.short;
   if (!p?.short.length) return null;
-  const canWait = p.short.find((x) => x.mode === "stems" && x.queue === "running");
+  const canWait = p.short.find((x) => x.mode === "stems" && (x.queue === "running" || x.queue === "waking"));
   return (
     <div className="npl-pop flex w-full flex-col items-center gap-3 rounded-3xl border-2 border-yellow-300 bg-black/40 p-5 text-center">
       {p.short.map((x) => (

@@ -71,3 +71,27 @@ export async function removeStemFiles(paths: string[]): Promise<number> {
   }
   return failed;
 }
+
+/** Envia uma faixa (MP3) para o bucket das faixas (com a service_role). */
+export async function uploadStemFile(path: string, data: ArrayBuffer): Promise<void> {
+  const res = await fetch(`${base()}/storage/v1/object/${BUCKET}/${path}`, {
+    method: "POST",
+    headers: headers({ "Content-Type": "audio/mpeg", "x-upsert": "true", "cache-control": "31536000" }),
+    body: data,
+    cache: "no-store",
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`Storage (envio de ${path}): ${res.status} ${(await res.text()).slice(0, 200)}`);
+}
+
+/** Rotas dos separadores: Authorization: Bearer SEPARADOR_TOKEN. */
+export function separadorDenied(request: Request): Response | null {
+  const expected = process.env.SEPARADOR_TOKEN;
+  if (!expected || !process.env.SUPABASE_SERVICE_ROLE_KEY)
+    return Response.json({ error: "Separadores desligados: defina SEPARADOR_TOKEN e SUPABASE_SERVICE_ROLE_KEY na Vercel." }, { status: 503 });
+  const got = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const a = Buffer.from(got);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return Response.json({ error: "Token do separador inválido" }, { status: 401 });
+  return null;
+}

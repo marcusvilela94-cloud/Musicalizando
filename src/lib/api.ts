@@ -263,6 +263,13 @@ export const deezer = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sources, versionFilter }),
     }),
+  /** Instrumentos: acorda o separador da nuvem (Hugging Face) se nenhum estiver ligado. */
+  wakeSeparator: (code: string, owner: string) =>
+    getJson<{ configured: boolean; woke: boolean; stage?: string | null; action?: string }>("/api/separador/wake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, owner }),
+    }),
   track: (id: number | string) =>
     getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),
   /** "Continuar a letra": analisa a música (LRC + Groq) e devolve a linha escondida e o contexto. */

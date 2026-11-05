@@ -38,7 +38,7 @@ set "PYYAML_FORCE_LIBYAML=0"
 if not exist ".env" (
   copy ".env.example" ".env" >nul
   echo.
-  echo Criei o separador\.env: abra e cole a SUPABASE_SERVICE_ROLE_KEY.
+  echo Criei o separador\.env: abra e preencha JOGO_URL, SEPARADOR_TOKEN e SEPARADOR_NOME.
 )
 echo.
 echo Pronto! Agora de dois cliques em iniciar-separador.bat

@@ -1,20 +1,17 @@
 """
-Separador de instrumentos do Musicalizando (roda no PC, fora do site).
+Separador de instrumentos do Musicalizando (roda no PC ou num Hugging Face Space).
 
-Fica olhando a fila no Supabase (npl_stems_queue). Para cada pedido:
+Pede trabalho ao jogo (rotas /api/separador/*, com o SEPARADOR_TOKEN). Para cada pedido:
   1. busca o link atualizado da prévia no Deezer e baixa o MP3;
   2. separa com o Demucs (modelo htdemucs_6s) e guarda só bateria, baixo,
      guitarra e voz (piano e "other" são descartados), em MP3 mono ~64 kbps;
   3. mede o volume (RMS) de cada faixa e marca as quase silenciosas;
-  4. envia as faixas para o Storage (bucket npl_stems) e grava o cache;
-  5. se o cache passar do limite, apaga as músicas usadas há mais tempo.
-A cada 30 s grava um "sinal de vida" (o jogo mostra se o separador está ligado).
+  4. envia as 4 faixas para o jogo, que grava no Storage e no cache (e apaga
+     as usadas há mais tempo se o cache passar do limite).
+A cada 30 s manda um "sinal de vida" com o nome do separador (SEPARADOR_NOME):
+o jogo mostra quais estão ligados e a fila se divide entre eles.
 
-Tudo passa por RPCs do banco (npl_stems_claim/done/fail/heartbeat/evict) e pela
-API do Storage. Outro separador (ex.: um Hugging Face Space) pode fazer o mesmo
-sem mudar nada no jogo.
-
-A chave service_role fica SÓ no separador/.env (fora do Git).
+Nenhuma chave do Supabase fica aqui: só a URL do jogo e o SEPARADOR_TOKEN.
 """
 from __future__ import annotations
 
@@ -26,10 +23,9 @@ import sys
 import threading
 import time
 import traceback
-import uuid
 from pathlib import Path
 
-VERSION = "1.1"
+VERSION = "2.0"
 HERE = Path(__file__).resolve().parent
 STEMS = ["drums", "bass", "guitar", "vocals"]  # o que o jogo usa (piano e other são descartados)
 NAMES = {"drums": "bateria", "bass": "baixo", "guitar": "guitarra", "vocals": "voz"}
@@ -59,27 +55,28 @@ def load_env() -> dict[str, str]:
             k, v = line.split("=", 1)
             env[k.strip()] = v.strip().strip('"').strip("'")
     # variáveis de ambiente valem mais que o arquivo (ex.: num servidor, sem .env)
-    for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CACHE_LIMITE_MB", "INTERVALO_FILA_SEGUNDOS",
-              "LIMIAR_SILENCIO_DB", "MP3_KBPS", *env):
+    for k in ("JOGO_URL", "SEPARADOR_TOKEN", "SEPARADOR_NOME", "CACHE_LIMITE_MB", "INTERVALO_FILA_SEGUNDOS",
+              "LIMIAR_SILENCIO_DB", "MP3_KBPS", "PORT", *env):
         if os.environ.get(k):
             env[k] = os.environ[k]
     return env
 
 
 ENV = load_env()
-URL = ENV.get("SUPABASE_URL", "").rstrip("/")
-KEY = ENV.get("SUPABASE_SERVICE_ROLE_KEY", "")
+URL = ENV.get("JOGO_URL", "").rstrip("/")
+TOKEN = ENV.get("SEPARADOR_TOKEN", "")
+NAME = (ENV.get("SEPARADOR_NOME") or f"PC-{os.environ.get('USERNAME') or os.environ.get('USER') or 'casa'}")[:40]
 LIMIT_MB = float(ENV.get("CACHE_LIMITE_MB", "200"))
 POLL_S = float(ENV.get("INTERVALO_FILA_SEGUNDOS", "5"))
 SILENCE_DB = float(ENV.get("LIMIAR_SILENCIO_DB", "-16"))  # abaixo da mistura: "sem conteúdo"
 FLOOR_DB = -50.0  # abaixo disso é silêncio em qualquer música
 BITRATE = int(ENV.get("MP3_KBPS", "64"))
-BUCKET = "npl_stems"
+PORT = int(ENV.get("PORT", "0") or 0)  # > 0: responde em HTTP (o Hugging Face Space precisa)
 
-if not URL or not KEY or "COLE" in KEY:
-    log("❌ Falta configurar o separador/.env (SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY).")
+if not URL or not TOKEN or "COLE" in TOKEN:
+    log("❌ Falta configurar o separador/.env (JOGO_URL e SEPARADOR_TOKEN).")
     if (HERE / ".env").exists():
-        log("   Abra o separador/.env e cole a chave service_role (Supabase > Project Settings > API Keys).")
+        log("   Abra o separador/.env e preencha JOGO_URL (endereço do jogo) e SEPARADOR_TOKEN.")
     else:
         log("   Copie separador/.env.example para separador/.env e preencha.")
     sys.exit(1)
@@ -96,69 +93,65 @@ except Exception:
 import requests  # noqa: E402  (depois de conferir o .env, para a mensagem sair mesmo sem as dependências)
 
 
-def headers(extra: dict[str, str] | None = None) -> dict[str, str]:
-    h = {"apikey": KEY}
-    # chave antiga (JWT "eyJ…") vai também no Authorization; a nova (sb_secret_…) só no apikey
-    if KEY.startswith("eyJ"):
-        h["Authorization"] = f"Bearer {KEY}"
-    if extra:
-        h.update(extra)
-    return h
-
-
-def rpc(name: str, args: dict | None = None):
-    r = requests.post(
-        f"{URL}/rest/v1/rpc/{name}",
-        headers=headers({"Content-Type": "application/json"}),
-        data=json.dumps(args or {}),
-        timeout=30,
-    )
+def api(action: str, payload: dict | None = None, files: dict | None = None, data: dict | None = None):
+    """Chama uma rota do jogo (/api/separador/<action>) com o token do separador."""
+    h = {"Authorization": f"Bearer {TOKEN}"}
+    if files is not None:
+        r = requests.post(f"{URL}/api/separador/{action}", headers=h, data=data or {}, files=files, timeout=90)
+    else:
+        r = requests.post(f"{URL}/api/separador/{action}", headers=h, json=payload or {}, timeout=30)
     if r.status_code >= 400:
-        raise RuntimeError(f"RPC {name}: {r.status_code} {r.text[:300]}")
+        try:
+            msg = r.json().get("error") or r.text[:300]
+        except Exception:
+            msg = r.text[:300]
+        raise RuntimeError(f"{action}: {r.status_code} {msg}")
     return r.json() if r.text else None
-
-
-def upload(path: str, data: bytes) -> None:
-    r = requests.post(
-        f"{URL}/storage/v1/object/{BUCKET}/{path}",
-        headers=headers({"Content-Type": "audio/mpeg", "x-upsert": "true", "cache-control": "31536000"}),
-        data=data,
-        timeout=60,
-    )
-    if r.status_code >= 400:
-        raise RuntimeError(f"Storage (envio de {path}): {r.status_code} {r.text[:300]}")
-
-
-def remove(paths: list[str]) -> None:
-    if not paths:
-        return
-    r = requests.delete(
-        f"{URL}/storage/v1/object/{BUCKET}",
-        headers=headers({"Content-Type": "application/json"}),
-        data=json.dumps({"prefixes": paths}),
-        timeout=60,
-    )
-    if r.status_code >= 400:
-        raise RuntimeError(f"Storage (apagar): {r.status_code} {r.text[:300]}")
 
 
 # ---------------------------------------------------------------------
 # Sinal de vida (thread separada: continua mesmo durante uma separação longa)
 # ---------------------------------------------------------------------
-STATE = {"status": "iniciando", "current": None, "done": 0, "errors": 0, "since": time.time()}
+STATE = {"status": "iniciando", "current": None, "done": 0, "errors": 0, "since": time.time(),
+         "paused": False, "full": False}
 
 
 def heartbeat_loop() -> None:
     while True:
         try:
-            rpc("npl_stems_heartbeat", {"p_info": {
-                "version": VERSION, "model": "htdemucs_6s", "status": STATE["status"],
-                "current": STATE["current"], "done": STATE["done"], "errors": STATE["errors"],
-                "limit_mb": LIMIT_MB,
-            }})
+            send_heartbeat()
         except Exception as e:  # sem internet etc.: tenta de novo daqui a pouco
             log(f"⚠️  Sinal de vida falhou: {e}")
         time.sleep(30)
+
+
+def send_heartbeat() -> None:
+    r = api("heartbeat", {"worker": NAME, "info": {
+        "version": VERSION, "model": "htdemucs_6s", "status": STATE["status"],
+        "current": STATE["current"], "done": STATE["done"], "errors": STATE["errors"],
+        "limit_mb": LIMIT_MB,
+    }}) or {}
+    STATE["paused"], STATE["full"] = bool(r.get("paused")), bool(r.get("full"))
+
+
+def status_server() -> None:
+    """Página simples de estado (o Hugging Face Space precisa de um servidor HTTP na porta)."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = json.dumps({"separador": NAME, "version": VERSION, "status": STATE["status"],
+                               "current": STATE["current"], "done": STATE["done"], "errors": STATE["errors"],
+                               "up_seconds": int(time.time() - STATE["since"])}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
 
 
 # ---------------------------------------------------------------------
@@ -177,9 +170,21 @@ def load_model():
 
 
 def fetch_preview(deezer_id: int) -> tuple[bytes, str]:
-    r = requests.get(f"https://api.deezer.com/track/{deezer_id}", timeout=20)
-    r.raise_for_status()
-    info = r.json()
+    info: dict = {}
+    try:
+        r = requests.get(f"https://api.deezer.com/track/{deezer_id}", timeout=20)
+        r.raise_for_status()
+        info = r.json()
+    except Exception:
+        info = {}
+    if info.get("error") or not info.get("preview"):
+        # o Deezer às vezes recusa servidores na nuvem: o jogo busca o link
+        try:
+            g = requests.get(f"{URL}/api/deezer/track/{deezer_id}", timeout=20).json()
+            if g.get("preview"):
+                info = {"preview": g["preview"], "title": g.get("title"), "artist": {"name": g.get("artist")}}
+        except Exception:
+            pass
     if info.get("error"):
         raise RuntimeError(f"Deezer: {info['error'].get('message', 'erro')}")
     preview = info.get("preview")
@@ -271,50 +276,50 @@ def process(model, job: dict) -> None:
     stems = separate(model, wav)
     t_sep = time.time() - t0
 
-    key = str(uuid.uuid4())
-    paths, levels, audible, total = {}, {}, {}, 0
+    files, levels, audible, total = {}, {}, {}, 0
     for name in STEMS:
         mono = stems[name].mean(0).numpy()
         db = rms_db(mono)
         levels[name] = round(db, 1)
-        audible[name] = db > max(FLOOR_DB, mix_db + SILENCE_DB)
+        audible[name] = bool(db > max(FLOOR_DB, mix_db + SILENCE_DB))
         data = to_mp3(mono, model.samplerate)
-        path = f"{key}/{name}.mp3"
-        upload(path, data)
-        paths[name] = path
+        files[name] = (f"{name}.mp3", data, "audio/mpeg")
         total += len(data)
 
-    rpc("npl_stems_done", {
-        "p_deezer_id": deezer_id, "p_key": key, "p_paths": paths, "p_bytes": total,
-        "p_audible": audible, "p_levels": {**levels, "mix": round(mix_db, 1)},
-    })
+    # o jogo grava no Storage e no cache (e apaga as usadas há mais tempo se passar do limite)
+    res = api("done", files=files, data={
+        "worker": NAME, "deezer_id": str(deezer_id), "limit_mb": str(LIMIT_MB),
+        "audible": json.dumps(audible), "levels": json.dumps({**levels, "mix": round(mix_db, 1)}),
+    }) or {}
+    if not res.get("ok"):
+        why = {"duplicate": "outro separador terminou antes", "blocked": "bloqueada na biblioteca"}.get(res.get("reason"), res.get("reason"))
+        log(f"↩️  Descartada ({why}).")
+        return
     empty = [NAMES[n] for n in STEMS if not audible[n]]
     log(f"✅ Pronto em {time.time() - t0:.0f}s (separação {t_sep:.0f}s, {total / 1024:.0f} KB)"
         + (f" — sem conteúdo: {', '.join(empty)}" if empty else ""))
     log("   níveis (dB): " + ", ".join(f"{NAMES[n]} {levels[n]}" for n in STEMS) + f" | mistura {mix_db:.1f}")
 
-    # limite do cache: apaga as usadas há mais tempo (menos as fixadas; o limite da biblioteca vale mais que o .env)
-    gone = rpc("npl_stems_evict", {"p_limit_bytes": int(LIMIT_MB * 1024 * 1024)}) or []
-    if gone:
-        files = [p for g in gone for p in (g.get("paths") or {}).values()]
-        try:
-            remove(files)
-        except Exception as e:
-            log(f"⚠️  Não consegui apagar arquivos antigos do Storage: {e}")
-        log(f"🧹 Cache acima do limite: apaguei {len(gone)} música(s) usadas há mais tempo.")
+    if res.get("evicted"):
+        log(f"🧹 Cache acima do limite: saíram {res['evicted']} música(s) usadas há mais tempo.")
 
 
 def main() -> None:
-    log(f"🎛️  Separador do Musicalizando v{VERSION} — {URL}")
-    try:
-        st = rpc("npl_stems_status", {"p_ids": []})
-        cache = st.get("cache") or {}
-        log(f"🔗 Conectado. Cache: {cache.get('songs', 0)} música(s), {int(cache.get('bytes', 0)) / 1048576:.1f} MB "
-            f"(limite {LIMIT_MB:.0f} MB).")
-    except Exception as e:
-        log(f"❌ Não consegui falar com o Supabase: {e}")
-        log("   Confira SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no separador/.env.")
-        sys.exit(1)
+    log(f"🎛️  Separador do Musicalizando v{VERSION} — {NAME} — {URL}")
+    if PORT:
+        threading.Thread(target=status_server, daemon=True).start()
+        log(f"🌐 Página de estado na porta {PORT}.")
+    while True:
+        try:
+            send_heartbeat()
+            log("🔗 Conectado ao jogo.")
+            break
+        except Exception as e:
+            log(f"❌ Não consegui falar com o jogo: {e}")
+            if not PORT:  # no PC: avisa e sai; no Space: tenta de novo
+                log("   Confira JOGO_URL e SEPARADOR_TOKEN no separador/.env.")
+                sys.exit(1)
+            time.sleep(30)
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     model = load_model()
@@ -324,19 +329,14 @@ def main() -> None:
     idle_logged: str | bool = False
     while True:
         try:
-            job = rpc("npl_stems_claim")
+            job = (api("claim", {"worker": NAME}) or {}).get("job")
         except Exception as e:
             log(f"⚠️  Fila indisponível: {e}")
             time.sleep(max(POLL_S, 10))
             continue
         if not job:
             # a pausa fica no banco (botão "Pausar fila" no jogo): o claim não entrega nada
-            paused = full = False
-            try:
-                g = (rpc("npl_stems_status", {"p_ids": []}) or {}).get("global") or {}
-                paused, full = bool(g.get("paused")), bool(g.get("full"))
-            except Exception:
-                pass
+            paused, full = STATE["paused"], STATE["full"]
             why = "pausada" if paused else "cheia" if full else "vazia"
             if idle_logged != why:
                 log({"pausada": "⏸️  Fila pausada no jogo. Esperando continuar…",
@@ -358,7 +358,7 @@ def main() -> None:
             if os.environ.get("SEPARADOR_DEBUG"):
                 traceback.print_exc()
             try:
-                rpc("npl_stems_fail", {"p_deezer_id": int(job["deezer_id"]), "p_error": msg})
+                api("fail", {"worker": NAME, "deezer_id": int(job["deezer_id"]), "error": msg})
             except Exception as e2:
                 log(f"⚠️  Não consegui marcar o erro na fila: {e2}")
         finally:
