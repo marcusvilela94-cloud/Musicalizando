@@ -171,14 +171,14 @@ export const deezer = {
     getJson<{ id: string; name: string; picture: string | null; fans: number }[]>(
       `/api/deezer/artists?q=${encodeURIComponent(q)}`,
     ),
-  build: (sources: RoomSettings["sources"], count: number) =>
+  build: (sources: RoomSettings["sources"], count: number, versionFilter: boolean) =>
     getJson<{ tracks: PickedTrack[]; warnings: string[] }>("/api/deezer/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources, count }),
+      body: JSON.stringify({ sources, count, versionFilter }),
     }),
   track: (id: number | string) =>
-    getJson<{ id: string; preview: string; title: string; artist: string; artists: string[]; meta?: TrackMeta }>(
-      `/api/deezer/track/${id}`,
-    ),
+    getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),
+  /** Leilão: gênero + ano original (busca no Deezer, feita no servidor). */
+  meta: (id: number | string) => getJson<TrackMeta>(`/api/deezer/meta/${id}`, { signal: AbortSignal.timeout(12000) }),
 };

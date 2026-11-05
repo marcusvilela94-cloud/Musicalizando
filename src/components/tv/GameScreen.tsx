@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GameControls, OverrideButtons, useGameActions } from "@/components/control/GameControls";
 import { Button, Equalizer, Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
-import { api } from "@/lib/api";
+import { api, deezer } from "@/lib/api";
 import type { PlayHandle } from "@/lib/audio";
 import { textOn } from "@/lib/colors";
 import {
@@ -24,9 +24,12 @@ import {
   roundDelta,
   stagePoints,
   teamById,
+  tiebreakDecider,
+  tiebreakLeft,
+  tiebreakOf,
 } from "@/lib/game";
 import { sharedSfx } from "@/lib/sfx";
-import type { Attempt, RoomState, Round } from "@/lib/types";
+import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import type { TvRoundViewProps } from "@/modes/types";
@@ -34,6 +37,8 @@ import type { TvCtx } from "./TvApp";
 
 /** A música da revelação espera o efeito sonoro terminar. */
 const REVEAL_MUSIC_DELAY_MS = 1200;
+/** Quanto tempo o anúncio "MORTE SÚBITA!" fica na tela. */
+const SUDDEN_ANNOUNCE_MS = 4500;
 
 export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const round = currentRound(state);
@@ -75,7 +80,11 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
           const list = await api.hostTracks(code, host);
           const cur = list.find((t) => t.round_no === roundNo);
           if (!cur) throw new Error("Música não encontrada");
-          const { buffer, artists, meta } = await audio.load(cur.deezer_id);
+          // Leilão: gênero + ano original (busca no servidor), em paralelo com o áudio
+          const isAuctionRound = currentRound(state)?.mode === "auction";
+          const metaP = isAuctionRound ? deezer.meta(cur.deezer_id).catch(() => null) : Promise.resolve(null);
+          const { buffer, artists } = await audio.load(cur.deezer_id);
+          const meta = await metaP;
           if (!alive) return;
           setLoaded({ roundId, buffer });
           setLoadMsg(null);
@@ -192,6 +201,17 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     };
   }, [turnDeadline, paused, serverNow, sfx, code]);
 
+  // ---- morte súbita: anúncio com efeito sonoro (uma vez por música de desempate) ----
+  const tb = tiebreakOf(round);
+  const announced = useRef<string | null>(null);
+  const tbFresh = !!tb && !!round && now - Date.parse(round.created_at) < SUDDEN_ANNOUNCE_MS;
+  useEffect(() => {
+    if (!tbFresh || !roundId || announced.current === roundId) return;
+    announced.current = roundId;
+    audio.stopAll();
+    sfx.play("sudden");
+  }, [tbFresh, roundId, audio, sfx]);
+
   // ---- revelação: efeito sonoro e depois a música (pausa para e continua de onde parou) ----
   const reveal = useRef<{ roundId: string; pos: number; done: boolean; announced: boolean } | null>(null);
   useEffect(() => {
@@ -280,7 +300,9 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
         </div>
       )}
 
-      {flash && round.status !== "revealed" && round.status !== "scoreboard" && <DecisionFlash state={state} attempt={flash} />}
+      {flash && round.status !== "revealed" && round.status !== "scoreboard" && <DecisionFlash state={state} attempt={flash} tiebreak={!!tb} />}
+
+      {tb && tbFresh && <SuddenDeathAnnounce state={state} tb={tb} />}
 
       {paused && (
         <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/60">
@@ -294,12 +316,19 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
 
 function TopBar({ state, round, now }: { state: RoomState; round: Round; now: number }) {
   const locks = new Map(lockedTeams(state, round, now).map((l) => [l.team.id, l]));
+  const tb = tiebreakOf(round);
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <div className="font-display text-3xl">
-        Rodada <b className="text-yellow-300">{round.round_no}</b>
-        <span className="text-white/50"> / {state.room.total_rounds}</span>
-      </div>
+      {tb ? (
+        <div className="font-display text-3xl font-bold text-rose-300">
+          ☠️ Morte súbita{tb.n > 1 ? <span className="font-normal text-white/60"> · música extra {tb.n}</span> : null}
+        </div>
+      ) : (
+        <div className="font-display text-3xl">
+          Rodada <b className="text-yellow-300">{round.round_no}</b>
+          <span className="text-white/50"> / {state.room.total_rounds}</span>
+        </div>
+      )}
       <div className="ml-auto flex flex-wrap gap-2">
         {ranking(state.teams).map(({ team }) => (
           <TeamChip key={team.id} team={team} className={`text-xl ${locks.has(team.id) ? "opacity-60" : ""}`}>
@@ -315,6 +344,7 @@ function TopBar({ state, round, now }: { state: RoomState; round: Round; now: nu
 
 function StageBar({ round }: { round: Round }) {
   const mode = getMode(round.mode);
+  const noPoints = !!tiebreakOf(round);
   return (
     <div className="grid w-full max-w-5xl gap-2" style={{ gridTemplateColumns: `repeat(${mode.stages.length}, 1fr)` }}>
       {mode.stages.map((s, i) => {
@@ -328,7 +358,7 @@ function StageBar({ round }: { round: Round }) {
             }`}
           >
             <div className="text-2xl font-bold">{s.seconds}s</div>
-            <div className="text-lg">{s.points} pts</div>
+            {!noPoints && <div className="text-lg">{s.points} pts</div>}
           </div>
         );
       })}
@@ -373,11 +403,17 @@ function FoundParts({ state, round }: { state: RoomState; round: Round }) {
 
 function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps) {
   const locks = lockedTeams(state, round, now);
+  const tb = tiebreakOf(round);
   return (
     <div className="flex w-full flex-col items-center gap-6">
       <StageBar round={round} />
+      {tb && <TiebreakBoard state={state} tb={tb} />}
       <div className="flex flex-wrap items-center justify-center gap-4 font-display text-3xl">
-        <Worth state={state} round={round} />
+        {tb ? (
+          <span>Acerte a <b className="rounded-lg bg-yellow-300 px-2 text-violet-950">MÚSICA</b> primeiro e vença a partida!</span>
+        ) : (
+          <Worth state={state} round={round} />
+        )}
         {locks.map((l) => (
           <span key={l.team.id} className="rounded-full px-4 py-1 text-2xl tabular-nums" style={{ background: l.team.color, color: textOn(l.team.color), opacity: 0.75 }}>
             🔒 {l.team.name} {lockLabel(l)}
@@ -444,7 +480,7 @@ function TurnPanel({ state, attempt, now }: { state: RoomState; attempt: Attempt
 }
 
 /** Animação rápida de acerto/erro (sem revelar a resposta). */
-function DecisionFlash({ state, attempt }: { state: RoomState; attempt: Attempt }) {
+function DecisionFlash({ state, attempt, tiebreak }: { state: RoomState; attempt: Attempt; tiebreak?: boolean }) {
   const team = teamById(state, attempt.team_id);
   const ok = attempt.status === "correct";
   const parts = attemptParts(attempt);
@@ -453,6 +489,7 @@ function DecisionFlash({ state, attempt }: { state: RoomState; attempt: Attempt 
       <div className={`npl-pop flex flex-col items-center gap-2 rounded-[3rem] px-16 py-10 shadow-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
         <p className="font-display text-9xl">{ok ? "✓" : "✗"}</p>
         <p className="font-display text-6xl font-bold">{ok ? `Acertou ${parts || ""}!` : attempt.status === "timeout" ? "Tempo esgotado!" : "Errou!"}</p>
+        {tiebreak && !ok && <p className="font-display text-4xl">Fora do desempate</p>}
         {team && <p className="font-display text-4xl">{team.name} {attempt.points > 0 ? `+${attempt.points}` : attempt.points < 0 ? attempt.points : ""}</p>}
       </div>
     </div>
@@ -468,6 +505,8 @@ function RevealView({ state, round, ctx, contest }: { state: RoomState; round: R
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const decided = attempts.filter((a) => ["correct", "wrong", "timeout"].includes(a.status));
+  const tb = tiebreakOf(round);
+  const auc = auctionOf(round);
   return (
     <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row lg:items-center lg:gap-10">
       {r?.cover && (
@@ -477,7 +516,15 @@ function RevealView({ state, round, ctx, contest }: { state: RoomState; round: R
       <div className="flex flex-1 flex-col gap-4 text-center lg:text-left">
         <p className="font-display text-6xl font-bold leading-tight">{r?.title}</p>
         <p className="font-display text-4xl text-pink-300">{r ? artistCredits(r) : ""}</p>
-        {artistTeam || titleTeam ? (
+        {auc?.hint === "genre" && auc.year && (
+          <p className="font-display text-2xl text-white/80">
+            📅 {auc.year}
+            {auc.track_year && auc.track_year !== auc.year && <span className="text-lg text-white/50"> · versão de {auc.track_year}</span>}
+          </p>
+        )}
+        {tb ? (
+          <TiebreakResult state={state} round={round} tb={tb} />
+        ) : artistTeam || titleTeam ? (
           <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
             {titleTeam && titleTeam.id === artistTeam?.id ? (
               <TeamChip team={titleTeam} className="text-4xl px-6 py-2">🎉 {titleTeam.name} acertou tudo</TeamChip>
@@ -564,5 +611,63 @@ function ScoreboardView({ state, round }: { state: RoomState; round: Round }) {
         );
       })}
     </div>
+  );
+}
+
+/** Anúncio na TV quando a morte súbita começa (e a cada música extra). */
+function SuddenDeathAnnounce({ state, tb }: { state: RoomState; tb: TiebreakState }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black/80">
+      <p className="npl-pop font-display text-9xl font-bold text-rose-400 drop-shadow-[0_0_30px_rgba(244,63,94,0.6)]">
+        {tb.n > 1 ? "MAIS UMA!" : "MORTE SÚBITA!"}
+      </p>
+      <p className="font-display text-4xl text-white/90">
+        {tb.n > 1 ? "Ninguém acertou: outra música de desempate" : "Empate no 1º lugar"}
+      </p>
+      <div className="flex flex-wrap justify-center gap-3">
+        {tiebreakLeft(tb).map((id) => {
+          const t = teamById(state, id);
+          return t ? <TeamChip key={id} team={t} className="text-4xl px-6 py-2">{t.name}</TeamChip> : null;
+        })}
+      </div>
+      <p className="font-display text-3xl text-yellow-300">Quem acertar a música primeiro vence!</p>
+    </div>
+  );
+}
+
+/** Times no desempate: quem ainda está no páreo e quem já errou. */
+function TiebreakBoard({ state, tb }: { state: RoomState; tb: TiebreakState }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      <span className="font-display text-2xl text-rose-300">☠️ Desempate:</span>
+      {tb.teams.map((id) => {
+        const t = teamById(state, id);
+        const out = (tb.out ?? []).includes(id);
+        return t ? (
+          <TeamChip key={id} team={t} className={`text-2xl px-4 py-1 ${out ? "opacity-40 line-through" : ""}`}>
+            {t.name}{out ? " ✗" : ""}
+          </TeamChip>
+        ) : null;
+      })}
+    </div>
+  );
+}
+
+/** Revelação de uma música de desempate. */
+function TiebreakResult({ state, round, tb }: { state: RoomState; round: Round; tb: TiebreakState }) {
+  const w = teamById(state, tiebreakDecider(round));
+  if (w) {
+    return (
+      <div className="flex flex-col items-center gap-2 lg:items-start">
+        <TeamChip team={w} className="text-4xl px-6 py-2">🏆 {w.name} venceu o desempate!</TeamChip>
+        {!round.winner_team_id && <p className="font-display text-2xl text-white/70">Os outros times erraram.</p>}
+      </div>
+    );
+  }
+  return (
+    <p className="font-display text-4xl text-white/70">
+      {round.skipped ? "Música pulada" : "Ninguém acertou 😅"}
+      {tiebreakLeft(tb).length >= 2 && <span className="block text-2xl">Vem mais uma música de desempate!</span>}
+    </p>
   );
 }

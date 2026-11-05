@@ -1,13 +1,35 @@
 // Sem importar o registro de modos (src/modes): as telas dos modos usam este arquivo.
 import { CLASSIC_STAGES } from "@/modes/classic/stages";
 import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
-import type { Attempt, RoomState, Round, Team } from "./types";
+import type { Attempt, RoomState, Round, Team, TiebreakState } from "./types";
+
+/** Estado do desempate (null fora da morte súbita). */
+export function tiebreakOf(r: Round | null | undefined): TiebreakState | null {
+  const t = r?.tiebreak;
+  return t && Array.isArray(t.teams) ? (t as TiebreakState) : null;
+}
+
+/** Times que ainda estão no páreo nesta música de desempate. */
+export const tiebreakLeft = (t: TiebreakState) => t.teams.filter((id) => !(t.out ?? []).includes(id));
+
+/** Quem venceu o desempate nesta rodada: acertou a música ou sobrou sozinho. */
+export const tiebreakDecider = (r: Round | null | undefined) => {
+  const t = tiebreakOf(r);
+  return t ? (r!.winner_team_id ?? t.survivor ?? null) : null;
+};
+
+/** Vencedor da morte súbita na partida (null se não houve ou ficou empatado). */
+export function suddenDeathWinner(s: RoomState): Team | null {
+  const r = [...s.rounds].reverse().find((x) => tiebreakDecider(x));
+  return r ? teamById(s, tiebreakDecider(r)) ?? null : null;
+}
 
 /**
  * Partes que ainda faltam descobrir nesta rodada (= o que o time pode responder).
  * Leilão: dica "artist" -> só a música; dica "genre" -> só o artista.
  */
 export function missingParts(s: RoomState, r: Round) {
+  if (tiebreakOf(r)) return { artist: false, title: !r.found?.title }; // desempate: só a música
   if (r.mode === "auction") {
     const hint = r.auction?.hint;
     return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
@@ -19,11 +41,12 @@ export function missingParts(s: RoomState, r: Round) {
 
 /** Pontos do estágio atual (= valor da música). Artista vale metade. Leilão: 100 fixos. */
 export const stagePoints = (r: Round) =>
-  r.mode === "auction" ? AUCTION_POINTS : CLASSIC_STAGES[Math.max(0, r.stage - 1)]?.points ?? 0;
+  tiebreakOf(r) ? 0 : r.mode === "auction" ? AUCTION_POINTS : CLASSIC_STAGES[Math.max(0, r.stage - 1)]?.points ?? 0;
 export const artistPoints = (pts: number) => Math.round(pts * 0.5);
 
 /** Quanto vale acertar cada parte agora. */
 export function partPoints(r: Round, part: "artist" | "title") {
+  if (tiebreakOf(r)) return 0; // desempate não vale pontos
   if (r.mode === "auction") return AUCTION_POINTS;
   const pts = stagePoints(r);
   return part === "artist" ? artistPoints(pts) : pts;
@@ -109,6 +132,20 @@ export function ranking(teams: Team[]) {
   return sorted.map((t) => ({ team: t, pos: sorted.findIndex((x) => x.score === t.score) + 1 }));
 }
 
+/**
+ * Ranking final: igual ao ranking, mas quem venceu a morte súbita fica
+ * sozinho em 1º e os outros empatados com ele passam a 2º.
+ */
+export function finalRanking(s: RoomState) {
+  const base = ranking(s.teams).map((x) => ({ ...x, wonTiebreak: false }));
+  const w = suddenDeathWinner(s);
+  const top = base[0]?.team.score;
+  if (!w || w.score !== top) return base;
+  return base
+    .map((x) => (x.team.id === w.id ? { ...x, pos: 1, wonTiebreak: true } : x.pos === 1 ? { ...x, pos: 2 } : x))
+    .sort((a, b) => a.pos - b.pos || a.team.idx - b.team.idx);
+}
+
 /** Pontos ganhos/perdidos por time numa rodada. */
 export function roundDelta(s: RoomState, r: Round | null) {
   const d = new Map<string, number>();
@@ -121,18 +158,20 @@ export function roundDelta(s: RoomState, r: Round | null) {
 
 /** Estatísticas da partida para a tela final. */
 export function matchStats(s: RoomState) {
-  const roundOf = (a: Attempt) => s.rounds.find((r) => r.id === a.round_id);
-  const correct = s.attempts.filter((a) => a.kind === "turn" && a.status === "correct");
+  // as músicas de desempate não entram nas estatísticas
+  const rounds = s.rounds.filter((r) => !tiebreakOf(r));
+  const roundOf = (a: Attempt) => rounds.find((r) => r.id === a.round_id);
+  const correct = s.attempts.filter((a) => a.kind === "turn" && a.status === "correct" && roundOf(a));
   const classicCorrect = correct.filter((a) => roundOf(a)?.mode !== "auction");
   const fastest = [...classicCorrect].sort((a, b) => a.stage - b.stage || a.ms_into_stage - b.ms_into_stage)[0];
   const steals = new Map<string, number>();
   for (const a of classicCorrect) if (a.steal && a.team_id) steals.set(a.team_id, (steals.get(a.team_id) ?? 0) + 1);
   const topSteal = [...steals.entries()].sort((a, b) => b[1] - a[1])[0];
-  const nobody = s.rounds.filter((r) => r.reveal && !r.winner_team_id);
+  const nobody = rounds.filter((r) => r.reveal && !r.winner_team_id);
 
   // Leilão: "Lance mais ousado" (menor lance que acertou; attempt.stage = segundos do lance)
   // e "Mais leilões vencidos" (quem ficou com o menor lance).
-  const auctionRounds = s.rounds.filter((r) => auctionOf(r));
+  const auctionRounds = rounds.filter((r) => auctionOf(r));
   const boldest = correct
     .filter((a) => roundOf(a)?.mode === "auction")
     .sort((a, b) => a.stage - b.stage || Date.parse(a.created_at) - Date.parse(b.created_at))[0];
@@ -146,7 +185,7 @@ export function matchStats(s: RoomState) {
     fastest: fastest ? { team: teamById(s, fastest.team_id), round: roundOf(fastest), attempt: fastest } : null,
     topSteal: topSteal ? { team: teamById(s, topSteal[0]), count: topSteal[1] } : null,
     nobody,
-    hadClassic: s.rounds.some((r) => r.mode !== "auction"),
+    hadClassic: rounds.some((r) => r.mode !== "auction"),
     hadAuction: auctionRounds.length > 0,
     boldest: boldest ? { team: teamById(s, boldest.team_id), round: roundOf(boldest), secs: boldest.stage } : null,
     topAuction: topWins[0]

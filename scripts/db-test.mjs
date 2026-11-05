@@ -658,6 +658,125 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok leilão");
 }
 
+// ---------- desempate (morte súbita) ----------
+{
+  const { code: c5 } = await rpc("npl_create_room", OWNER, { rounds: 5, teamCount: 3, answerSeconds: 10, penalty: 50 });
+  let s5 = await rpc("npl_get_state", c5);
+  assert.equal(s5.room.settings.tiebreak, "sudden", "padrão: morte súbita");
+  assert.equal(s5.room.settings.versionFilter, true, "padrão: filtro de versões ligado");
+  await rpc("npl_update_settings", c5, OWNER, { tiebreak: "xx", versionFilter: "sim" });
+  s5 = await rpc("npl_get_state", c5);
+  assert.equal(s5.room.settings.tiebreak, "sudden");
+  assert.equal(s5.room.settings.versionFilter, true);
+  await rpc("npl_update_settings", c5, OWNER, { versionFilter: false });
+  assert.equal((await rpc("npl_get_state", c5)).room.settings.versionFilter, false);
+
+  const [qa, qb, qc] = [P(20), P(21), P(22)];
+  await rpc("npl_join", c5, qa, "Ana");
+  await rpc("npl_join", c5, qb, "Bia");
+  await rpc("npl_join", c5, qc, "Cris");
+  s5 = await rpc("npl_get_state", c5);
+  const [TA, TB, TC] = s5.teams.map((t) => t.id);
+  await rpc("npl_set_team", c5, qa, TA);
+  await rpc("npl_set_team", c5, qb, TB);
+  await rpc("npl_set_team", c5, qc, TC);
+  const mk = (n) => Array.from({ length: n }, (_, i) => ({
+    deezer_id: 5000 + i, title: `Faixa Numero ${i + 1}`, title_short: `Faixa Numero ${i + 1}`,
+    artist: `Cantor ${i + 1}`, artists: [`Cantor ${i + 1}`], cover: "x",
+  }));
+  const cur = async () => {
+    const s = await rpc("npl_get_state", c5);
+    return { s, r: s.rounds.find((x) => x.round_no === s.room.round_no) };
+  };
+  // pula todas as músicas normais -> todos empatados com 0
+  const skipAll = async () => {
+    for (;;) {
+      const { s, r } = await cur();
+      if (r.round_no > s.room.total_rounds) return;
+      await rpc("npl_skip_round", c5, OWNER, r.id);
+      await rpc("npl_next_round", c5, OWNER, r.round_no);
+      if ((await rpc("npl_get_state", c5)).room.phase !== "playing") return;
+    }
+  };
+
+  // 7 músicas para 5 rodadas: 2 de reserva
+  const st5 = await rpc("npl_start_match", c5, OWNER, mk(7));
+  assert.equal(st5.total_rounds, 5);
+  assert.equal(st5.reserve, 2);
+  await skipAll();
+  let { s, r } = await cur();
+  assert.equal(s.room.phase, "playing", "empate -> morte súbita");
+  assert.equal(r.round_no, 6);
+  assert.equal(r.mode, "classic");
+  assert.deepEqual(r.tiebreak.teams, [TA, TB, TC]);
+  assert.equal(r.tiebreak.n, 1);
+  await rpc("npl_round_begin", c5, OWNER, r.id, [], []);
+  await rpc("npl_play", c5, OWNER, r.id, 1, false);
+  // A erra -> fora (sem bloqueio por tempo, sem penalidade)
+  let bz = await rpc("npl_buzz", c5, qa, r.id);
+  assert.equal(bz.ok, true);
+  assert.equal((await rpc("npl_submit_answer", c5, qa, bz.attempt_id, "Cantor 6", "")).reason, "empty", "artista não vale no desempate");
+  await rpc("npl_submit_answer", c5, qa, bz.attempt_id, "", "outra coisa");
+  ({ s, r } = await cur());
+  assert.equal(r.status, "playing");
+  assert.deepEqual(r.tiebreak.out, [TA]);
+  assert.deepEqual(r.locks, {}, "sem bloqueio no desempate");
+  assert.equal(s.teams.find((t) => t.id === TA).score, 0, "sem penalidade no desempate");
+  assert.equal((await rpc("npl_buzz", c5, qa, r.id)).reason, "tiebreak", "quem errou está fora");
+  // B acerta -> vence; pontos não entram no placar
+  bz = await rpc("npl_buzz", c5, qb, r.id);
+  assert.equal((await rpc("npl_submit_answer", c5, qb, bz.attempt_id, "", "Faixa Numero 6")).result, "correct");
+  ({ s, r } = await cur());
+  assert.equal(r.status, "revealed");
+  assert.equal(r.winner_team_id, TB);
+  assert.deepEqual(s.teams.map((t) => t.score), [0, 0, 0], "desempate não pontua");
+  await rpc("npl_next_round", c5, OWNER, 6);
+  assert.equal((await rpc("npl_get_state", c5)).room.phase, "finished");
+
+  // revanche: ninguém acerta -> outra música; dois erram -> sobra um e ele vence
+  await rpc("npl_update_settings", c5, OWNER, { rounds: 5 });
+  await rpc("npl_start_match", c5, OWNER, mk(7));
+  await rpc("npl_adjust_score", c5, OWNER, TC, -10); // C fica fora do empate
+  await skipAll();
+  ({ s, r } = await cur());
+  assert.deepEqual(r.tiebreak.teams, [TA, TB], "só os empatados no 1º lugar");
+  assert.equal((await rpc("npl_buzz", c5, qc, r.id)).reason, "tiebreak");
+  await rpc("npl_round_begin", c5, OWNER, r.id, [], []);
+  await rpc("npl_end_round", c5, OWNER, r.id); // ninguém acertou
+  await rpc("npl_next_round", c5, OWNER, 6);
+  ({ s, r } = await cur());
+  assert.equal(r.round_no, 7, "mais uma música de desempate");
+  assert.deepEqual(r.tiebreak.teams, [TA, TB]);
+  assert.equal(r.tiebreak.n, 2);
+  await rpc("npl_round_begin", c5, OWNER, r.id, [], []);
+  bz = await rpc("npl_buzz", c5, qa, r.id);
+  await rpc("npl_end_turn", c5, OWNER, bz.attempt_id);
+  ({ s, r } = await cur());
+  assert.equal(r.status, "revealed", "sobrou um só time");
+  assert.equal(r.tiebreak.survivor, TB);
+  assert.equal(r.winner_team_id, null);
+  await rpc("npl_next_round", c5, OWNER, 7);
+  assert.equal((await rpc("npl_get_state", c5)).room.phase, "finished");
+
+  // sem música reserva: fica o empate
+  await rpc("npl_start_match", c5, OWNER, mk(6));
+  await skipAll();
+  ({ s, r } = await cur());
+  assert.equal(r.round_no, 6);
+  await rpc("npl_skip_round", c5, OWNER, r.id);
+  await rpc("npl_next_round", c5, OWNER, 6);
+  assert.equal((await rpc("npl_get_state", c5)).room.phase, "finished", "acabaram as reservas");
+
+  // aceitar empate: termina na última música
+  await rpc("npl_update_settings", c5, OWNER, { tiebreak: "accept" });
+  await rpc("npl_start_match", c5, OWNER, mk(7));
+  await skipAll();
+  s = await rpc("npl_get_state", c5);
+  assert.equal(s.room.phase, "finished");
+  assert.equal(s.room.round_no, 5);
+  console.log("ok desempate");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

@@ -3,15 +3,17 @@ import { useEffect } from "react";
 import { FinalControls } from "@/components/control/FinalControls";
 import { Logo, TeamChip } from "@/components/ui";
 import { textOn } from "@/lib/colors";
-import { artistCredits, formatSeconds, isHostStyle, matchStats, ranking } from "@/lib/game";
+import { artistCredits, finalRanking, formatSeconds, isHostStyle, matchStats } from "@/lib/game";
 import { sharedSfx } from "@/lib/sfx";
 import type { RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
 import type { TvCtx } from "./TvApp";
 
 export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
-  const rank = ranking(state.teams);
+  // quem venceu a morte súbita fica sozinho em 1º; empate aceito = vários em 1º
+  const rank = finalRanking(state);
   const podium = rank.slice(0, 3);
+  const firsts = rank.filter((x) => x.pos === 1);
   const stats = matchStats(state);
   const votes = state.players.filter((p) => p.wants_rematch).length;
   const sounds = state.room.settings.sounds !== false;
@@ -39,11 +41,17 @@ export function FinalScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     <main className="flex flex-1 flex-col items-center gap-8 p-8">
       <Logo className="text-4xl" />
       <h1 className="font-display text-6xl font-bold text-yellow-300">Fim de jogo! 🏆</h1>
+      {firsts.length > 1 && (
+        <p className="-mt-4 font-display text-3xl text-white/90">
+          Empate no 1º lugar: {firsts.map((x) => x.team.name).join(" e ")}!
+        </p>
+      )}
 
       <div className="flex items-end justify-center gap-4">
-        {order.map(({ team, pos }) => (
+        {order.map(({ team, pos, wonTiebreak }) => (
           <div key={team.id} className="flex w-56 flex-col items-center gap-2">
             <span className="font-display text-3xl font-semibold text-center">{team.name}</span>
+            {wonTiebreak && <span className="rounded-full bg-rose-500 px-3 py-0.5 font-display text-lg">☠️ venceu no desempate</span>}
             <span className="font-display text-4xl font-bold">{team.score}</span>
             <div
               className={`npl-pop flex w-full items-start justify-center rounded-t-3xl pt-4 font-display text-7xl font-bold ${heights[pos] ?? "h-28"}`}

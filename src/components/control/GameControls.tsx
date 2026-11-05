@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import { currentAttempt, currentRound, teamById } from "@/lib/game";
+import { currentAttempt, currentRound, ranking, teamById, tiebreakDecider, tiebreakLeft, tiebreakOf } from "@/lib/game";
 import type { Attempt, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
@@ -66,6 +66,18 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
   const k = (key: string) => (tv ? <kbd className="ml-2 rounded bg-black/25 px-1.5 text-sm opacity-70">{key}</kbd> : null);
   const nextStage = stages[round.stage]; // estágio seguinte (índice = estágio atual)
   const isLastRound = state.room.round_no >= state.room.total_rounds;
+  // depois da última música: empate no 1º lugar + morte súbita -> rodada extra
+  const tb = tiebreakOf(round);
+  const topTie = ranking(state.teams).filter((x) => x.pos === 1).length >= 2;
+  const nextLabel = tb
+    ? tiebreakDecider(round) || tiebreakLeft(tb).length < 2
+      ? "🏁 Ver resultado"
+      : "☠️ Mais uma música de desempate →"
+    : isLastRound
+      ? (state.room.settings.tiebreak ?? "sudden") === "sudden" && topTie
+        ? "☠️ Morte súbita →"
+        : "🏁 Ver resultado"
+      : "Próxima música →";
   const big = tv ? "text-2xl px-6 py-3" : "text-xl py-4 flex-1 min-w-[45%]";
   const small = tv ? "" : "flex-1";
 
@@ -105,7 +117,7 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
         )}
         {can.nextRound && (
           <Button className={big} onClick={actions.nextRound}>
-            {isLastRound ? "🏁 Ver resultado" : "Próxima música →"}
+            {nextLabel}
             {k("→")}
           </Button>
         )}
@@ -146,8 +158,10 @@ export function OverrideButtons({
   onError: (m: string) => void;
 }) {
   // Leilão: só uma parte vale (a da dica)
-  const hint = auctionOf(state.rounds.find((r) => r.id === attempt.round_id))?.hint;
-  const both = !hint && state.room.settings.scoring === "artist_title";
+  const r = state.rounds.find((x) => x.id === attempt.round_id);
+  const hint = auctionOf(r)?.hint;
+  // desempate: só a música vale
+  const both = !hint && !tiebreakOf(r) && state.room.settings.scoring === "artist_title";
   const art = attempt.artist_result === "ok";
   const tit = attempt.title_result === "ok";
   const set = (a: boolean, t: boolean) => api.overrideParts(code, token, attempt.id, a, t).catch((e) => onError(friendlyError(e)));

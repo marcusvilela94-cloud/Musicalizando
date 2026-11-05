@@ -17,12 +17,14 @@ type DzTrack = {
   readable?: boolean;
   title: string;
   title_short?: string;
+  title_version?: string;
   preview?: string;
   artist: DzArtist;
   contributors?: DzArtist[];
   album?: { id?: number; title?: string; cover_medium?: string; cover_big?: string };
 };
 type DzAlbum = {
+  id?: number;
   title?: string;
   record_type?: string;
   release_date?: string;
@@ -30,27 +32,6 @@ type DzAlbum = {
   artist?: { id?: number; name?: string };
 };
 
-const VARIOUS_ARTISTS_ID = 5080;
-/** Títulos típicos de coletânea (o ano do álbum não é o da música). */
-const COMPILATION_TITLE = /greatest hits|best of|the very best|grandes sucessos|maiores sucessos|as melhores|colet[aâ]nea|\bhits\b/i;
-
-async function getTrackMeta(albumId: number | undefined): Promise<TrackMeta> {
-  const none: TrackMeta = { genre: null, year: null, compilation: false };
-  if (!albumId) return none;
-  try {
-    const a = await dz<DzAlbum>(`/album/${albumId}`);
-    const year = Number((a.release_date ?? "").slice(0, 4));
-    const genre = a.genres?.data?.map((g) => g.name?.trim()).find((g) => g && g.toLowerCase() !== "all") ?? null;
-    const compilation =
-      a.record_type === "compile" ||
-      a.artist?.id === VARIOUS_ARTISTS_ID ||
-      /various artists|v[aá]rios artistas/i.test(a.artist?.name ?? "") ||
-      COMPILATION_TITLE.test(a.title ?? "");
-    return { genre, year: year >= 1900 && year <= new Date().getFullYear() + 1 ? year : null, compilation };
-  } catch {
-    return none;
-  }
-}
 type DzList<T> = { data?: T[]; next?: string; total?: number; error?: { message: string } };
 
 async function dz<T>(pathOrUrl: string): Promise<T> {
@@ -130,7 +111,6 @@ export async function getTrack(id: string) {
     title: t.title,
     artist: t.artist?.name ?? "",
     artists: [...new Set(artists)],
-    meta: await getTrackMeta(t.album?.id),
   };
 }
 
@@ -143,6 +123,149 @@ const norm = (s: string) =>
     .replace(/\s+-\s+.*$/, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+
+// ---------------------------------------------------------------------
+// Filtro de versões (ao vivo, acústico, remix, karaokê, cover, regravação…)
+// ---------------------------------------------------------------------
+/** Minúsculas, sem acentos, pontuação vira espaço. */
+const fold = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const VERSION_WORDS_RE =
+  /\b(ao vivo|live|acustico|acoustic|unplugged|remix|mix|karaoke|instrumental|cover|tributo|tribute|versao|version|regravacao|re ?recorded|sped up|slowed)\b/;
+/**
+ * "Version" que não é outra gravação: edições do mesmo álbum ("Fearless
+ * (International Version)", "Deluxe Version"…) e remasters ("Versão Remasterizada").
+ */
+const SAME_RECORDING_RE =
+  /\b(deluxe|super deluxe|international|expanded|bonus tracks?|special|standard|explicit|clean|edited|album|original|single|radio|anniversary|remaster\w*)( edition)? (version|versao)\b|\b(versao|version) (remaster\w*|original|do album|deluxe)\b/g;
+const VERSION_RE = { test: (text: string) => VERSION_WORDS_RE.test(text.replace(SAME_RECORDING_RE, " ")) };
+
+/**
+ * Trecho do título que indica a versão: o que está entre parênteses/colchetes,
+ * depois de " - " e o title_version do Deezer. (Assim "Live Forever" não cai.)
+ */
+function titleVersionText(t: Pick<DzTrack, "title" | "title_version">) {
+  const title = t.title ?? "";
+  const bits = [...title.matchAll(/\(([^)]*)\)|\[([^\]]*)\]/g)].map((m) => m[1] ?? m[2] ?? "");
+  const dash = title.match(/\s[-–—]\s(.*)$/);
+  if (dash) bits.push(dash[1]);
+  if (t.title_version) bits.push(t.title_version);
+  return fold(bits.join(" "));
+}
+
+/** Título do álbum sem o nome da própria música (o single "Live Forever" não conta como ao vivo). */
+function albumVersionText(albumTitle: string | undefined, trackTitle: string) {
+  const a = fold(albumTitle ?? "");
+  const t = fold(trackTitle);
+  return t && a.startsWith(t) ? a.slice(t.length) : a;
+}
+
+const versionText = (t: DzTrack) =>
+  `${titleVersionText(t)} | ${albumVersionText(t.album?.title, t.title_short ?? t.title)}`;
+/** Faixa é outra versão (ao vivo, remix, cover…)? */
+export const isOtherVersion = (t: DzTrack) => VERSION_RE.test(versionText(t));
+
+/** Álbuns já consultados (record_type, data, gênero). Compartilhado entre as rotas. */
+const albumCache = new Map<number, Promise<DzAlbum | null>>();
+function getAlbum(id: number | undefined): Promise<DzAlbum | null> {
+  if (!id) return Promise.resolve(null);
+  let p = albumCache.get(id);
+  if (!p) {
+    p = dz<DzAlbum>(`/album/${id}`).catch(() => null);
+    albumCache.set(id, p);
+    if (albumCache.size > 3000) albumCache.delete(albumCache.keys().next().value!);
+  }
+  return p;
+}
+
+const VARIOUS_ARTISTS_ID = 5080;
+const isCompilationAlbum = (a: DzAlbum | null) =>
+  !!a &&
+  (a.record_type === "compile" || a.artist?.id === VARIOUS_ARTISTS_ID || /various artists|v[aá]rios artistas/i.test(a.artist?.name ?? ""));
+
+function yearOf(date: string | undefined) {
+  const y = Number((date ?? "").slice(0, 4));
+  return y >= 1900 && y <= new Date().getFullYear() + 1 ? y : null;
+}
+/**
+ * Ano de um álbum. O Deezer costuma guardar a data do relançamento digital
+ * (remaster), então um ano escrito no título ("Roberto Carlos 1971
+ * Remasterizado") vale se for mais antigo. Remasters contam no menor ano:
+ * nunca são mais antigos que o original, então só podem ajudar.
+ */
+function albumYear(a: DzAlbum) {
+  const date = yearOf(a.release_date);
+  const inTitle = [...(a.title ?? "").matchAll(/\b(19\d\d|20\d\d)\b/g)].map((m) => Number(m[1]));
+  const all = [date, ...inTitle.filter((y) => !date || y <= date)].filter((y): y is number => !!y);
+  return all.length ? Math.min(...all) : null;
+}
+const genreOf =(a: DzAlbum | null) =>
+  a?.genres?.data?.map((g) => g.name?.trim()).find((g) => g && g.toLowerCase() !== "all") ?? null;
+
+// ---------------------------------------------------------------------
+// Dica "Gênero e ano" do Leilão: ano ORIGINAL da música
+// ---------------------------------------------------------------------
+const metaCache = new Map<string, Promise<TrackMeta>>();
+
+/**
+ * Procura no Deezer a mesma música do mesmo artista principal (busca por
+ * artista + faixa) e usa o MENOR ano entre os álbuns/singles encontrados,
+ * ignorando coletâneas, versões (ao vivo, remix…) e remasters. Sem resultado
+ * confiável -> year null (a rodada usa a dica "Artista").
+ */
+export function getAuctionMeta(id: string): Promise<TrackMeta> {
+  let p = metaCache.get(id);
+  if (!p) {
+    p = computeAuctionMeta(id);
+    p.catch(() => metaCache.delete(id));
+    metaCache.set(id, p);
+    if (metaCache.size > 500) metaCache.delete(metaCache.keys().next().value!);
+  }
+  return p;
+}
+
+async function computeAuctionMeta(id: string): Promise<TrackMeta> {
+  const t = await dz<DzTrack>(`/track/${id}`);
+  const own = await getAlbum(t.album?.id);
+  const name = t.artist?.name ?? "";
+  const short = t.title_short ?? t.title;
+  const q = `artist:"${name.replace(/"/g, "")}" track:"${short.replace(/"/g, "")}"`;
+  const search = (query: string) =>
+    dz<DzList<DzTrack>>(`/search/track?q=${encodeURIComponent(query)}&limit=50`).catch(() => ({ data: [] }) as DzList<DzTrack>);
+  // a busca avançada (artist:"" track:"") do Deezer tem voltado vazia: busca simples
+  // "artista música" primeiro (o filtro abaixo garante título e artista iguais)
+  let found = await search(`${name} ${short}`);
+  if (!found.data?.length) found = await search(q);
+
+  // mesma música (título normalizado) do mesmo artista principal, versão "normal"
+  const key = norm(short);
+  const artistKey = norm(name);
+  const same = (found.data ?? []).filter(
+    (x) =>
+      norm(x.title_short ?? x.title) === key &&
+      (x.artist?.id === t.artist?.id || norm(x.artist?.name ?? "") === artistKey) &&
+      !isOtherVersion(x),
+  );
+  const albumIds = [...new Set(same.map((x) => x.album?.id).filter((v): v is number => !!v))].slice(0, 12);
+  const albums = (await Promise.all(albumIds.map(getAlbum))).filter(
+    (a): a is DzAlbum =>
+      !!a && !isCompilationAlbum(a) && !VERSION_RE.test(albumVersionText(a.title, short)),
+  );
+  const dated = albums
+    .map((a) => ({ a, year: albumYear(a) }))
+    .filter((x): x is { a: DzAlbum; year: number } => x.year !== null)
+    .sort((x, y) => x.year - y.year);
+  const year = dated[0]?.year ?? null;
+  // gênero: o do álbum da faixa (se não for coletânea); senão o do lançamento mais antigo
+  const genre = (!isCompilationAlbum(own) ? genreOf(own) : null) ?? dated.map((x) => genreOf(x.a)).find(Boolean) ?? null;
+  return { genre, year, compilation: false, track_year: yearOf(own?.release_date) };
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -180,45 +303,58 @@ async function loadSource(src: MusicSource): Promise<DzTrack[]> {
  * Junta as faixas de todas as fontes, remove repetidas (mesmo ID ou mesmo
  * título+artista), descarta faixas sem prévia e sorteia N músicas de forma
  * equilibrada: as fontes se revezam (rodízio), então uma playlist de 200
- * não engole uma de 20.
+ * não engole uma de 20. Com o filtro de versões, descarta ao vivo, acústico,
+ * remix, karaokê, covers, regravações… e faixas de coletâneas.
  */
-export async function buildTrackList(sources: MusicSource[], count: number) {
+export async function buildTrackList(sources: MusicSource[], count: number, versionFilter = true) {
   const warnings: string[] = [];
   const pools: DzTrack[][] = [];
   const results = await Promise.allSettled(sources.map(loadSource));
   results.forEach((r, i) => {
-    if (r.status === "fulfilled") pools.push(shuffle(r.value.filter((t) => t.preview && t.readable !== false)));
-    else warnings.push(`Não consegui carregar "${sources[i].label}": ${(r.reason as Error).message}`);
+    if (r.status === "fulfilled") {
+      pools.push(shuffle(r.value.filter((t) => t.preview && t.readable !== false && !(versionFilter && isOtherVersion(t)))));
+    } else warnings.push(`Não consegui carregar "${sources[i].label}": ${(r.reason as Error).message}`);
   });
 
+  // rodízio entre as fontes (ordem das fontes sorteada a cada volta), sem repetidas
   const seenIds = new Set<number>();
   const seenKeys = new Set<string>();
-  const picked: PickedTrack[] = [];
-  const take = (t: DzTrack) => {
-    const key = `${norm(t.title_short ?? t.title)}|${norm(t.artist?.name ?? "")}`;
-    if (seenIds.has(t.id) || seenKeys.has(key)) return false;
-    seenIds.add(t.id);
-    seenKeys.add(key);
-    picked.push(toPicked(t));
-    return true;
-  };
-
-  // rodízio entre as fontes (ordem das fontes sorteada a cada volta)
-  const cursors = pools.map(() => 0);
-  while (picked.length < count) {
-    let progressed = false;
-    for (const i of shuffle(pools.map((_, k) => k))) {
-      if (picked.length >= count) break;
-      const pool = pools[i];
-      while (cursors[i] < pool.length) {
-        const t = pool[cursors[i]++];
-        if (take(t)) {
-          progressed = true;
+  function* candidates() {
+    const cursors = pools.map(() => 0);
+    for (;;) {
+      let any = false;
+      for (const i of shuffle(pools.map((_, k) => k))) {
+        const pool = pools[i];
+        while (cursors[i] < pool.length) {
+          const t = pool[cursors[i]++];
+          const key = `${norm(t.title_short ?? t.title)}|${norm(t.artist?.name ?? "")}`;
+          if (seenIds.has(t.id) || seenKeys.has(key)) continue;
+          seenIds.add(t.id);
+          seenKeys.add(key);
+          any = true;
+          yield t;
           break;
         }
       }
+      if (!any) return;
     }
-    if (!progressed) break;
+  }
+
+  // coletânea só dá para saber consultando o álbum: confere em lotes, em paralelo
+  const picked: PickedTrack[] = [];
+  const gen = candidates();
+  while (picked.length < count) {
+    const batch: DzTrack[] = [];
+    while (batch.length < count - picked.length) {
+      const n = gen.next();
+      if (n.done) break;
+      batch.push(n.value);
+    }
+    if (!batch.length) break;
+    const keep = versionFilter
+      ? await Promise.all(batch.map(async (t) => (await getAlbum(t.album?.id))?.record_type !== "compile"))
+      : batch.map(() => true);
+    batch.forEach((t, i) => keep[i] && picked.push(toPicked(t)));
   }
 
   if (picked.length < count && picked.length > 0) {

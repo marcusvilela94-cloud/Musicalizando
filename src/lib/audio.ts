@@ -3,14 +3,13 @@
 // O áudio é baixado com fetch direto da CDN do Deezer (que libera CORS),
 // decodificado na memória e descartado — nada é armazenado.
 import { deezer } from "./api";
-import type { TrackMeta } from "./types";
 
 export type PlayHandle = {
   /** Para o som (se ainda tocando) e devolve quantos segundos tocaram. */
   stop: () => number;
 };
 
-type Loaded = { buffer: AudioBuffer; artists: string[]; meta: TrackMeta | null };
+type Loaded = { buffer: AudioBuffer; artists: string[] };
 
 export class AudioManager {
   ctx: AudioContext | null = null;
@@ -44,7 +43,7 @@ export class AudioManager {
       if (!res.ok) throw new Error(`Prévia indisponível (${res.status})`);
       const data = await res.arrayBuffer();
       const buffer = await this.ctx.decodeAudioData(data);
-      return { buffer, artists: info.artists, meta: info.meta ?? null };
+      return { buffer, artists: info.artists };
     })();
     p.catch(() => this.cache.delete(deezerId));
     this.cache.set(deezerId, p);

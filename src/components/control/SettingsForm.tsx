@@ -50,6 +50,10 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
   // "Misturar" = sorteia o modo de cada rodada entre Clássico e Leilão
   const gameMode: GameMode =
     settings.modeSelection === "random" && settings.modePool.length > 1 ? "mix" : settings.mode === "auction" ? "auction" : "classic";
+  // opções que só valem no Clássico: escondidas no Leilão (o valor fica guardado),
+  // com etiqueta "só no Clássico" ao misturar
+  const showClassic = gameMode !== "auction";
+  const classicTag = gameMode === "mix" ? "só no Clássico" : undefined;
   const setGameMode = (m: GameMode) =>
     update(
       m === "mix"
@@ -110,30 +114,44 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             className="accent-yellow-300"
           />
         </Card>
-        <Option title="O que vale" value={settings.scoring} onChange={(v) => update({ scoring: v })}
-          options={[["artist_title", "Artista e música"], ["title", "Só a música"]]}
-          hint={[
-            settings.scoring === "artist_title" ? "Artista vale 50% dos pontos, música 100%, as duas juntas 150%." : "",
-            gameMode !== "classic" ? "No Leilão quem manda é a dica: dica artista vale a música; dica gênero/ano vale o artista." : "",
-          ].filter(Boolean).join(" ") || undefined} />
+        {showClassic && (
+          <Option title="O que vale" tag={classicTag} value={settings.scoring} onChange={(v) => update({ scoring: v })}
+            options={[["artist_title", "Artista e música"], ["title", "Só a música"]]}
+            hint={settings.scoring === "artist_title" ? "Artista vale 50% dos pontos, música 100%, as duas juntas 150%." : undefined} />
+        )}
         {host && (
           <Option title="Modo de resposta" value={settings.answerMode} onChange={(v) => update({ answerMode: v })}
             options={[["spoken", "Falada"], ["typed", "Digitada"]]}
             hint={settings.answerMode === "spoken" ? "O time fala em voz alta e o apresentador julga." : "O time digita no celular e o sistema confere."} />
         )}
-        <Option title="Trechos" value={settings.clipMode ?? "sequence"} onChange={(v) => update({ clipMode: v })}
+        {showClassic && (
+        <Option title="Trechos" tag={classicTag} value={settings.clipMode ?? "sequence"} onChange={(v) => update({ clipMode: v })}
           options={[["sequence", "Em sequência"], ["alternate", "Alternando"]]}
           hint={(settings.clipMode ?? "sequence") === "sequence"
             ? "Todos os trechos começam do início da prévia e vão crescendo: 1s, 2s, 4s, 8s, 15s, 30s."
             : "Cada trecho começa num ponto sorteado diferente da prévia; o último toca a prévia inteira."} />
+        )}
         <Option title="Tempo de resposta do time" value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
           options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
-        <Option title="Bloqueio após erro" value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
-          options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
-          hint="Quem erra fica bloqueado; a contagem só começa quando a música volta a tocar. Se outro time errar, quem estava bloqueado é liberado." />
-        <Option title="Penalidade por erro" value={settings.penalty} onChange={(v) => update({ penalty: v })}
-          options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]}
-          hint={gameMode !== "classic" ? "Não vale nas rodadas de Leilão." : undefined} />
+        {showClassic && (
+          <Option title="Bloqueio após erro" tag={classicTag} value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
+            options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
+            hint="Quem erra fica bloqueado; a contagem só começa quando a música volta a tocar. Se outro time errar, quem estava bloqueado é liberado." />
+        )}
+        {showClassic && (
+          <Option title="Penalidade por erro" tag={classicTag} value={settings.penalty} onChange={(v) => update({ penalty: v })}
+            options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]} />
+        )}
+        <Option title="Desempate" value={settings.tiebreak ?? "sudden"} onChange={(v) => update({ tiebreak: v })}
+          options={[["sudden", "Morte súbita"], ["accept", "Aceitar empate"]]}
+          hint={(settings.tiebreak ?? "sudden") === "sudden"
+            ? "Empate no 1º lugar: uma música extra no modo clássico só para os empatados. Quem acertar a música primeiro vence; quem errar está fora."
+            : "Empate no 1º lugar: os times empatados dividem o 1º lugar."} />
+        <Option title="Filtro de versões" value={settings.versionFilter !== false} onChange={(v) => update({ versionFilter: v })}
+          options={[[true, "Ligado"], [false, "Desligado"]]}
+          hint={settings.versionFilter !== false
+            ? "Descarta ao vivo, acústico, remix, karaokê, instrumental, cover, regravações e coletâneas."
+            : "Vale qualquer versão que estiver nas fontes."} />
         <Option title="Efeitos sonoros" value={settings.sounds} onChange={(v) => update({ sounds: v })}
           options={[[true, "Ligados"], [false, "Desligados"]]} />
         {settings.sounds && (
@@ -171,12 +189,14 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
 
 function Option<T extends string | number | boolean>({
   title,
+  tag,
   value,
   options,
   onChange,
   hint,
 }: {
   title: string;
+  tag?: string;
   value: T;
   options: [T, string][];
   onChange: (v: T) => void;
@@ -184,7 +204,10 @@ function Option<T extends string | number | boolean>({
 }) {
   return (
     <Card className="flex flex-col gap-3">
-      <h2 className="font-display text-xl font-semibold">{title}</h2>
+      <h2 className="flex flex-wrap items-center gap-2 font-display text-xl font-semibold">
+        {title}
+        {tag && <span className="rounded-full bg-white/10 px-2 py-0.5 font-sans text-xs font-normal text-white/60">{tag}</span>}
+      </h2>
       <Segmented value={value} options={options} onChange={onChange} />
       {hint && <p className="text-sm text-white/60">{hint}</p>}
     </Card>

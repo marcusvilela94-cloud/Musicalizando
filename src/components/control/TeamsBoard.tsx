@@ -6,23 +6,32 @@ import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import type { Player, RoomState, Team } from "@/lib/types";
 
+/** Músicas a mais sorteadas para a morte súbita (ficam de reserva no servidor). */
+const TIEBREAK_RESERVE = 5;
+
 /** Sorteia as músicas (rota do Next -> Deezer) e começa a partida. */
 export async function startMatch(state: RoomState, code: string, token: string): Promise<string[]> {
-  const { sources, rounds } = state.room.settings;
-  const { tracks, warnings } = await deezer.build(sources, rounds);
+  const { sources, rounds, tiebreak, versionFilter } = state.room.settings;
+  const extra = (tiebreak ?? "sudden") === "sudden" ? TIEBREAK_RESERVE : 0;
+  const { tracks, warnings: all } = await deezer.build(sources, rounds + extra, versionFilter !== false);
+  // o aviso de "poucas músicas" só interessa se faltou para as rodadas (não para as reservas)
+  const warnings = all.filter((w) => !w.startsWith("Só encontrei") || tracks.length < rounds);
   await api.startMatch(code, token, tracks);
   return warnings;
 }
 
 export function settingsSummary(state: RoomState) {
   const s = state.room.settings;
+  // só Leilão: as opções do clássico não valem
+  const auctionOnly = s.modeSelection !== "random" && s.mode === "auction";
   return [
     `${s.rounds} músicas`,
     s.answerSeconds ? `${s.answerSeconds}s para responder` : "sem limite de tempo",
-    s.scoring === "title" ? "só a música" : "artista e música",
+    auctionOnly ? "" : s.scoring === "title" ? "só a música" : "artista e música",
     s.roomStyle === "host" ? (s.answerMode === "spoken" ? "resposta falada" : "resposta digitada") : "resposta digitada",
-    `bloqueio de ${s.lockSeconds}s após erro`,
-    s.penalty ? `erro −${s.penalty}` : "",
+    ...(auctionOnly ? [] : [`bloqueio de ${s.lockSeconds}s após erro`, s.penalty ? `erro −${s.penalty}` : ""]),
+    (s.tiebreak ?? "sudden") === "sudden" ? "desempate: morte súbita" : "empate aceito",
+    s.versionFilter === false ? "todas as versões" : "",
   ]
     .filter(Boolean)
     .join(" · ");

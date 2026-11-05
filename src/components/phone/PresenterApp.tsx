@@ -22,6 +22,9 @@ import {
   ranking,
   roundAttempts,
   teamById,
+  finalRanking,
+  tiebreakLeft,
+  tiebreakOf,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
@@ -103,17 +106,32 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
   const stage = mode.stages[round.stage - 1];
   const ModePanel = mode.PresenterRoundView;
   const locks = lockedTeams(state, round, now);
+  const tb = tiebreakOf(round);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between font-display">
-        <span className="text-xl">Rodada <b className="text-yellow-300">{round.round_no}</b>/{state.room.total_rounds}</span>
+        {tb ? (
+          <span className="text-xl font-bold text-rose-300">☠️ Morte súbita{tb.n > 1 ? ` · extra ${tb.n}` : ""}</span>
+        ) : (
+          <span className="text-xl">Rodada <b className="text-yellow-300">{round.round_no}</b>/{state.room.total_rounds}</span>
+        )}
         {stage && round.status !== "loading" && (
           <span className="text-lg text-white/80">
-            Trecho {round.stage} · {stage.seconds}s · {stage.points} pts
+            Trecho {round.stage} · {stage.seconds}s{tb ? "" : ` · ${stage.points} pts`}
           </span>
         )}
       </div>
+      {tb && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-rose-500/15 px-3 py-2">
+          <span className="text-sm text-rose-200">Desempate (vale a música):</span>
+          {tb.teams.map((id) => {
+            const t = teamById(state, id);
+            const out = !tiebreakLeft(tb).includes(id);
+            return t ? <TeamChip key={id} team={t} className={out ? "opacity-40 line-through" : ""}>{t.name}</TeamChip> : null;
+          })}
+        </div>
+      )}
 
       {round.status === "loading" ? (
         <Spinner label="Carregando a música na TV…" />
@@ -175,6 +193,7 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
   const left = attempt.deadline ? Math.max(0, Date.parse(attempt.deadline) - now) : null;
   const spoken = state.room.settings.answerMode === "spoken";
   const need = missingParts(state, round);
+  const pts = (n: number) => (n ? ` +${n}` : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const decide = async (artist: boolean, title: boolean) => {
@@ -199,13 +218,13 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
       {spoken ? (
         <div className="flex flex-wrap gap-2">
           {need.artist && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo +{partPoints(round, "artist")}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo{pts(partPoints(round, "artist"))}</Button>
           )}
           {need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>🎵 Música certa +{partPoints(round, "title")}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>🎵 Música certa{pts(partPoints(round, "title"))}</Button>
           )}
           {need.artist && need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois +{partPoints(round, "artist") + partPoints(round, "title")}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois{pts(partPoints(round, "artist") + partPoints(round, "title"))}</Button>
           )}
           <Button variant="danger" className={btn} disabled={busy} onClick={() => decide(false, false)}>❌ Errou</Button>
         </div>
@@ -285,10 +304,13 @@ function Decisions({ state, round, code, token }: { state: RoomState; round: Rou
 function ScoreList({ state }: { state: RoomState }) {
   return (
     <div className="flex flex-col gap-2">
-      {ranking(state.teams).map(({ team, pos }) => (
+      {finalRanking(state).map(({ team, pos, wonTiebreak }) => (
         <div key={team.id} className="flex items-center gap-3 rounded-xl px-3 py-2" style={{ background: team.color, color: textOn(team.color) }}>
           <span className="font-display text-2xl font-bold w-10">{pos}º</span>
-          <span className="flex-1 font-display text-xl truncate">{team.name}</span>
+          <span className="flex-1 font-display text-xl truncate">
+            {team.name}
+            {wonTiebreak && <span className="block text-xs font-sans opacity-80">venceu no desempate</span>}
+          </span>
           <span className="font-display text-2xl font-bold tabular-nums">{team.score}</span>
         </div>
       ))}

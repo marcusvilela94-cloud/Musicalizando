@@ -8,7 +8,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { api } from "@/lib/api";
 import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
-import { currentRound, ranking, roundDelta, teamById } from "@/lib/game";
+import { currentRound, finalRanking, roundDelta, teamById, tiebreakOf } from "@/lib/game";
 import { getPlayerToken, getSavedNickname, saveNickname } from "@/lib/tokens";
 import type { Player, RoomState, Team } from "@/lib/types";
 import { PresenterApp } from "./PresenterApp";
@@ -256,9 +256,9 @@ function TeamPicker({ state, ctx, midGame }: { state: RoomState; ctx: PhoneCtx; 
 }
 
 function FinalPhone({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
-  const rank = ranking(state.teams);
+  const rank = finalRanking(state);
   const mine = rank.find((r) => r.team.id === ctx.team?.id);
-  const last = state.rounds[state.rounds.length - 1];
+  const last = [...state.rounds].reverse().find((r) => !tiebreakOf(r));
   const delta = roundDelta(state, last ?? null);
   return (
     <>
@@ -267,6 +267,7 @@ function FinalPhone({ state, ctx }: { state: RoomState; ctx: PhoneCtx }) {
         <div className="npl-pop w-full max-w-sm rounded-3xl p-6" style={{ background: mine.team.color, color: textOn(mine.team.color) }}>
           <p className="font-display text-7xl font-bold">{mine.pos}º</p>
           <p className="font-display text-2xl">{mine.team.name}</p>
+          {mine.wonTiebreak && <p className="font-display text-lg opacity-80">🏆 venceu no desempate</p>}
           <p className="font-display text-3xl font-bold">{mine.team.score} pts</p>
           {(delta.get(mine.team.id) ?? 0) !== 0 && <p className="opacity-80">última rodada: {delta.get(mine.team.id)}</p>}
         </div>

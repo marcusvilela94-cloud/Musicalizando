@@ -15,6 +15,9 @@ import {
   recentDecision,
   roundDelta,
   teamById,
+  tiebreakDecider,
+  tiebreakLeft,
+  tiebreakOf,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
@@ -28,6 +31,7 @@ const REASONS: Record<string, string> = {
   not_yet: "Você joga a partir da próxima música.",
   own_turn: "Seu time já está respondendo!",
   no_team: "Escolha um time primeiro.",
+  tiebreak: "Só os times empatados jogam o desempate.",
 };
 
 export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round | null }) {
@@ -53,7 +57,9 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
   if (!round || round.status === "loading") {
     return (
       <>
-        <p className="font-display text-xl text-white/70">Rodada {state.room.round_no} de {state.room.total_rounds}</p>
+        <p className="font-display text-xl text-white/70">
+          {tiebreakOf(round) ? "☠️ Morte súbita!" : `Rodada ${state.room.round_no} de ${state.room.total_rounds}`}
+        </p>
         <Spinner label="Preparando a próxima música… 🎧" />
       </>
     );
@@ -66,9 +72,14 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
 
   const ModeView = getMode(round.mode).PhoneRoundView;
   const inPlay = round.status === "playing" || round.status === "answering" || round.status === "doubt";
+  // desempate: quem não está (ou já não está) no páreo só assiste
+  const tb = tiebreakOf(round);
+  const watching = !!tb && inPlay && !tiebreakLeft(tb).includes(team.id);
 
   let body: React.ReactNode = null;
-  if (ModeView && inPlay) {
+  if (watching) {
+    body = <TiebreakWatch state={state} round={round} out={tb.teams.includes(team.id)} />;
+  } else if (ModeView && inPlay) {
     body = notYet ? (
       <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>
     ) : (
@@ -90,6 +101,8 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
         <p className="text-white/70 text-lg">O apresentador está decidindo a resposta {attempt.team_id === team.id ? "do seu time" : `de ${t?.name}`}.</p>
       </>
     );
+  } else if (round.status === "revealed" && tb) {
+    body = <TiebreakRevealPhone state={state} ctx={ctx} round={round} />;
   } else if (round.status === "revealed") {
     body = <RevealPhone state={state} ctx={ctx} round={round} />;
   } else if (round.status === "scoreboard") {
@@ -99,17 +112,18 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
   return (
     <>
       {body}
-      {myDecision && round.status === "playing" && <DecisionToast attempt={myDecision} />}
+      {myDecision && round.status === "playing" && <DecisionToast attempt={myDecision} tiebreak={!!tb} />}
       {feedback && <p className="npl-pop absolute bottom-6 left-4 right-4 rounded-2xl bg-black/80 px-4 py-3 text-lg">{feedback}</p>}
     </>
   );
 }
 
-function DecisionToast({ attempt }: { attempt: Attempt }) {
+function DecisionToast({ attempt, tiebreak }: { attempt: Attempt; tiebreak?: boolean }) {
   const ok = attempt.status === "correct";
   return (
     <div className={`npl-pop absolute left-4 right-4 top-4 rounded-2xl px-4 py-3 font-display text-2xl ${ok ? "bg-emerald-500" : "bg-rose-600"}`}>
-      {ok ? `✓ Acertaram ${attemptParts(attempt)}!` : attempt.status === "timeout" ? "⏱ Tempo esgotado" : "✗ Errou!"}{" "}
+      {ok ? `✓ Acertaram ${attemptParts(attempt)}!` : attempt.status === "timeout" ? "⏱ Tempo esgotado" : "✗ Errou!"}
+      {tiebreak && !ok ? " Fora do desempate." : ""}{" "}
       {attempt.points ? (attempt.points > 0 ? `+${attempt.points}` : attempt.points) : ""}
     </div>
   );
@@ -169,7 +183,13 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
         )}
       </button>
       <p className="font-display text-xl text-white/80">
-        {locked ? (lock!.waiting ? "Seu time errou — a contagem começa quando a música voltar" : "Seu time errou — espere a contagem") : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
+        {locked
+          ? lock!.waiting
+            ? "Seu time errou — a contagem começa quando a música voltar"
+            : "Seu time errou — espere a contagem"
+          : tiebreakOf(round)
+            ? "☠️ Desempate: acerte a música e vença!"
+            : `Rodada ${round.round_no} de ${state.room.total_rounds}`}
       </p>
     </div>
   );
@@ -223,5 +243,51 @@ function ScorePhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; ro
       {delta !== 0 && <p className="font-display text-xl opacity-80">nesta rodada: {delta > 0 ? `+${delta}` : delta}</p>}
       <p className="mt-2 opacity-80">de {state.teams.length} times</p>
     </div>
+  );
+}
+
+/** Desempate: times que não estão no páreo assistem. */
+function TiebreakWatch({ state, round, out }: { state: RoomState; round: Round; out: boolean }) {
+  const tb = tiebreakOf(round)!;
+  return (
+    <>
+      <p className="font-display text-5xl">👀</p>
+      <p className="font-display text-3xl">Assistindo ao desempate</p>
+      {out && <p className="text-lg text-rose-300">Seu time errou e está fora do desempate.</p>}
+      <div className="flex flex-wrap justify-center gap-2">
+        {tiebreakLeft(tb).map((id) => {
+          const t = teamById(state, id);
+          return t ? <TeamChip key={id} team={t} className="text-lg">{t.name}</TeamChip> : null;
+        })}
+      </div>
+    </>
+  );
+}
+
+function TiebreakRevealPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round }) {
+  const w = teamById(state, tiebreakDecider(round));
+  const mine = w && w.id === ctx.team?.id;
+  return (
+    <>
+      {mine ? (
+        <p className="npl-pop font-display text-5xl font-bold text-emerald-300">🏆 Vocês venceram o desempate!</p>
+      ) : w ? (
+        <p className="font-display text-3xl"><TeamChip team={w} /> venceu o desempate</p>
+      ) : (
+        <p className="font-display text-3xl">{round.skipped ? "Música pulada" : "Ninguém acertou 😅"}</p>
+      )}
+      {round.reveal && (
+        <div className="flex items-center gap-3 rounded-2xl bg-white/10 p-3 text-left">
+          {round.reveal.cover && (
+            // eslint-disable-next-line @next/next/no-img-element -- capa do Deezer
+            <img src={round.reveal.cover} alt="" className="h-16 w-16 rounded-xl" />
+          )}
+          <div>
+            <p className="font-display text-xl font-semibold">{round.reveal.title}</p>
+            <p className="text-white/70">{artistCredits(round.reveal)}</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

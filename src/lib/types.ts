@@ -11,6 +11,8 @@ export type RoomStyle = "all" | "host"; // "Todos jogam" | "Com apresentador"
 export type SfxVolume = "low" | "medium" | "high";
 /** Trechos: "sequence" = todos do início da prévia; "alternate" = cada um num ponto sorteado. */
 export type ClipMode = "sequence" | "alternate";
+/** Empate no 1º lugar: "sudden" = morte súbita (música extra); "accept" = aceitar empate. */
+export type Tiebreak = "sudden" | "accept";
 
 /** Bloqueio de um time depois de errar. started_at/until = null: aguardando a música voltar. */
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
@@ -32,6 +34,8 @@ export type RoomSettings = {
   sounds: boolean; // efeitos sonoros na TV
   sfxVolume?: SfxVolume; // volume dos efeitos (padrão "high")
   clipMode?: ClipMode; // trechos (padrão "sequence")
+  tiebreak?: Tiebreak; // desempate (padrão "sudden")
+  versionFilter?: boolean; // descarta ao vivo, acústico, remix, coletâneas… (padrão true)
   teamMode: "teams" | "solo";
   teamCount: number;
   sources: MusicSource[];
@@ -47,8 +51,12 @@ export type PickedTrack = {
   album: string | null;
 };
 
-/** Dica do Leilão: gênero e ano do álbum da faixa (null quando não é confiável). */
-export type TrackMeta = { genre: string | null; year: number | null; compilation: boolean };
+/**
+ * Dica do Leilão: gênero + ano. year = menor ano de lançamento da mesma música
+ * no Deezer (sem coletâneas/ao vivo/remasters…), null quando não é confiável.
+ * track_year = ano do álbum da faixa que toca (ex.: remaster de 2010).
+ */
+export type TrackMeta = { genre: string | null; year: number | null; compilation: boolean; track_year: number | null };
 
 export type Phase ="config" | "lobby" | "playing" | "finished";
 export type RoundStatus = "loading" | "playing" | "answering" | "doubt" | "revealed" | "scoreboard";
@@ -102,6 +110,7 @@ export type AuctionState = {
   artists: string[] | null;
   genre: string | null;
   year: number | null;
+  track_year?: number | null; // ano da versão que toca (pode ser diferente de year)
   phase: "bidding" | "proving";
   starts_at: string;
   order: string[]; // times na ordem do rodízio
@@ -116,6 +125,14 @@ export type AuctionState = {
   qidx: number; // posição atual da fila
   played: number; // última posição que já ouviu o trecho
   winner: string | null; // venceu o leilão (menor lance)
+};
+
+/** Rodada de desempate (morte súbita): só os times empatados no 1º lugar jogam. */
+export type TiebreakState = {
+  teams: string[]; // times que disputam esta música
+  out: string[]; // erraram: fora do desempate
+  survivor: string | null; // sobrou um só (os outros erraram): ele vence
+  n: number; // 1ª, 2ª… música de desempate
 };
 
 export type Round = {
@@ -143,6 +160,8 @@ export type Round = {
   found: { artist?: string; title?: string }; // partes já descobertas
   locks: Record<string, TeamLock>; // team_id -> bloqueio (relógio do servidor)
   auction: Partial<AuctionState>; // vazio ({}) fora do leilão
+  tiebreak?: Partial<TiebreakState>; // vazio ({}) fora do desempate
+  created_at: string;
   started_at: string | null;
   revealed_at: string | null;
 };
