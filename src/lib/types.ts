@@ -23,7 +23,7 @@ export type Tiebreak = "sudden" | "accept";
 export type TeamLock = { secs: number; started_at: string | null; until: string | null };
 
 /** Configuração da sala. Guardada como JSON (extensível para novos modos). */
-export type ModeId = "classic" | "auction" | "lyrics";
+export type ModeId = "classic" | "auction" | "lyrics" | "continue";
 
 export type RoomSettings = {
   mode: ModeId; // modo fixo da partida
@@ -61,6 +61,7 @@ export type PickedTrack = {
   album: string | null;
   lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
   mode?: ModeId; // modo planejado para a rodada desta posição
+  cont?: ContinuePlan; // "Continuar a letra": linhas de contexto + a escondida (vai para npl_tracks, oculto)
 };
 
 /**
@@ -113,6 +114,7 @@ export type Reveal = {
   album: string | null;
   lyrics?: LyricVerses; // só quando a partida usa o modo letra (vai para npl_tracks, oculto)
   mode?: ModeId; // modo planejado para a rodada desta posição
+  cont?: ContinuePlan; // "Continuar a letra": linhas de contexto + a escondida (vai para npl_tracks, oculto)
 };
 
 /** Leilão: "artist" = TV mostra o artista (vale a música); "genre" = gênero + ano (vale o artista). */
@@ -140,6 +142,21 @@ export type AuctionState = {
   qidx: number; // posição atual da fila
   played: number; // última posição que já ouviu o trecho
   winner: string | null; // venceu o leilão (menor lance)
+};
+
+/** "Continuar a letra": linha com tempos em segundos da prévia. */
+export type ContLine = { text: string; start: number; end: number };
+export type ContinuePlan = { lines: ContLine[]; hidden: ContLine };
+/** O que todos veem na rodada (sem o texto da linha escondida até a revelação). */
+export type ContinueState = {
+  title?: string;
+  artist?: string;
+  artists?: string[];
+  ctx: number; // 2 | 3 | 4 linhas de contexto
+  max: number; // estágios desta música (1 a 3)
+  lines: { text: string; start: number }[];
+  hidden: { words: number; start: number };
+  reveal?: ContLine; // só na revelação
 };
 
 /** Modo letra: o que todos veem (o servidor só manda os trechos já revelados). */
@@ -184,6 +201,7 @@ export type Round = {
   auction: Partial<AuctionState>; // vazio ({}) fora do leilão
   tiebreak?: Partial<TiebreakState>; // vazio ({}) fora do desempate
   lyrics?: Partial<LyricsState>; // vazio ({}) fora do modo letra
+  cont?: Partial<ContinueState>; // vazio ({}) fora do "Continuar a letra"
   created_at: string;
   started_at: string | null;
   revealed_at: string | null;

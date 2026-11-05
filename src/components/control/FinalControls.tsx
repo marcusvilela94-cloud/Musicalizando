@@ -4,7 +4,7 @@ import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import type { RoomState } from "@/lib/types";
-import { LyricsShortNotice, useMatchStarter } from "./matchStart";
+import { LyricsShortNotice, PrepareProgress, useMatchStarter } from "./matchStart";
 
 /** Revanche / mudar times / configurações (TV no "Todos jogam" ou apresentador). */
 export function FinalControls({ state, code, token, compact }: { state: RoomState; code: string; token: string; compact?: boolean }) {
@@ -17,6 +17,7 @@ export function FinalControls({ state, code, token, compact }: { state: RoomStat
   return (
     <div className="flex flex-col items-center gap-3">
       {(error ?? m.error) && <p className="text-rose-300 text-lg">{error ?? m.error}</p>}
+      <PrepareProgress m={m} compact={compact} />
       <LyricsShortNotice m={m} compact={compact} />
       <div className={`flex flex-wrap justify-center gap-3 ${compact ? "w-full flex-col" : ""}`}>
         <Button className={compact ? "text-2xl py-4" : "text-3xl px-10 py-5"} disabled={busy} onClick={rematch}>

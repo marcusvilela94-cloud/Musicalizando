@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const sources = (Array.isArray(body.sources) ? body.sources : [])
     .filter((s) => s && ["preset", "playlist", "artist"].includes(s.type) && /^[\w-]+$/.test(String(s.id)))
     .slice(0, 12);
-  const count = Math.min(35, Math.max(5, Number(body.count) || 10));
+  const count = Math.min(60, Math.max(5, Number(body.count) || 10));
   if (sources.length === 0) return Response.json({ error: "Escolha pelo menos uma fonte de músicas" }, { status: 400 });
   try {
     const result = await buildTrackList(sources, count, body.versionFilter !== false, Math.max(0, Math.min(count, Number(body.lyrics) || 0)));

@@ -31,7 +31,7 @@ import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
 import { teamLabel } from "@/lib/icons";
 
-type Answer = { round_id: string; title: string; artist: string; artists: string[] } | null;
+type Answer = { round_id: string; title: string; artist: string; artists: string[]; line?: string | null } | null;
 
 /** Celular do apresentador (estilo "Com apresentador"): ele não joga, só comanda. */
 export function PresenterApp({ code, token }: { code: string; token: string }) {
@@ -174,10 +174,15 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
   return (
     <div className="rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/10 p-3 text-left">
       <p className="text-xs uppercase tracking-wide text-emerald-300">Resposta certa (só você vê)</p>
+      {answer?.line && round.mode === "continue" && (
+        <p className="mb-2 rounded-xl bg-yellow-300 px-3 py-2 font-display text-2xl font-bold text-violet-950">
+          🎤 “{answer.line}” {!need.title && "✓"}
+        </p>
+      )}
       {answer ? (
         <>
           <p className="font-display text-2xl font-bold">
-            🎵 {answer.title} {!need.title && <span className="text-emerald-300">✓</span>}
+            🎵 {answer.title} {!need.title && round.mode !== "continue" && <span className="text-emerald-300">✓</span>}
           </p>
           <p className="font-display text-xl text-pink-200">
             🎤 {artistCredits(answer)}{" "}
@@ -225,7 +230,7 @@ function TurnCard({ state, attempt, now, code, token }: { state: RoomState; atte
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, false)}>🎤 Artista certo{pts(partPoints(round, "artist"))}</Button>
           )}
           {need.title && (
-            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>🎵 Música certa{pts(partPoints(round, "title"))}</Button>
+            <Button variant="success" className={btn} disabled={busy} onClick={() => decide(false, true)}>{round.mode === "continue" ? "✅ Acertou" : "🎵 Música certa"}{pts(partPoints(round, "title"))}</Button>
           )}
           {need.artist && need.title && (
             <Button variant="success" className={btn} disabled={busy} onClick={() => decide(true, true)}>✅ Os dois{pts(partPoints(round, "artist") + partPoints(round, "title"))}</Button>
@@ -254,7 +259,8 @@ function DoubtCard({ state, attempt, answer, code, token }: { state: RoomState; 
   const rows: [string, string | null, string, string | null][] = [];
   if (attempt.answer_artist !== null || attempt.artist_result === "doubt")
     rows.push(["Artista", attempt.answer_artist, answer ? artistCredits(answer) : "…", attempt.artist_result]);
-  rows.push(["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result]);
+  const contRound = state.rounds.find((r) => r.id === attempt.round_id)?.mode === "continue";
+  rows.push(contRound ? ["Linha", attempt.answer_title, answer?.line ?? "…", attempt.title_result] : ["Música", attempt.answer_title, answer?.title ?? "…", attempt.title_result]);
   return (
     <div className="flex flex-col gap-3 rounded-2xl border-4 border-yellow-300 bg-white/10 p-3">
       <p className="text-center font-display text-3xl font-bold text-yellow-300">Valeu ou não valeu?</p>

@@ -1,7 +1,7 @@
 "use client";
 // Wrappers das RPCs npl_* (únicas escritas permitidas no banco).
 import { supabase } from "./supabase";
-import type { PickedTrack, RoomSettings, RoomState, TrackMeta } from "./types";
+import type { ContinuePlan, PickedTrack, RoomSettings, RoomState, TrackMeta } from "./types";
 
 type Listener = (kind: string, extra?: Record<string, unknown>) => void;
 let afterMutation: Listener | null = null;
@@ -137,7 +137,7 @@ export const api = {
     call<void>("npl_end_turn", { p_code: code, p_owner_token: owner, p_attempt_id: attemptId }),
   tick: (code: string) => call<boolean>("npl_tick", { p_code: code }),
   hostAnswer: (code: string, owner: string) =>
-    call<{ round_id: string; title: string; artist: string; artists: string[] } | null>(
+    call<{ round_id: string; title: string; artist: string; artists: string[]; line?: string | null } | null>(
       "npl_host_answer",
       { p_code: code, p_owner_token: owner },
       false,
@@ -194,6 +194,11 @@ export const deezer = {
     }),
   track: (id: number | string) =>
     getJson<{ id: string; preview: string; title: string; artist: string; artists: string[] }>(`/api/deezer/track/${id}`),
+  /** "Continuar a letra": analisa a música (LRC + Groq) e devolve a linha escondida e o contexto. */
+  continuePlan: (id: number | string) =>
+    getJson<{ ok: true; plan: ContinuePlan; offset: number } | { ok: false; reason: string }>(`/api/game/continue/${id}`, {
+      signal: AbortSignal.timeout(60000),
+    }),
   /** Leilão: gênero + ano original (busca no Deezer, feita no servidor). */
   meta: (id: number | string) => getJson<TrackMeta>(`/api/deezer/meta/${id}`, { signal: AbortSignal.timeout(12000) }),
 };

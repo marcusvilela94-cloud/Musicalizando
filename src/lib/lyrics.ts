@@ -117,7 +117,7 @@ const LABEL_RE =
   /^(refrao|chorus|verse|verso|ponte|bridge|pre refrao|pre chorus|prechorus|intro|outro|hook|coro|repete|repeat|instrumental|solo)( \d+)?( \d+x| x\d+)?$/;
 
 /** Só vocalização: oh, ah, yeah, uô, lá, na, uh, hey, ooh, whoa, iê… */
-const FILLER_RE = /^(o+h*|a+h*|u+h*|u+o+|ye+a*h*|ie+|la+|na+|hey|ho+|whoa+|wo+|ooh+|mm+|hmm+|uau|eh+|ai+|ay+|oi+)$/;
+export const FILLER_RE = /^(o+h*|a+h*|u+h*|u+o+|ye+a*h*|ie+|la+|na+|hey|ho+|whoa+|wo+|ooh+|mm+|hmm+|uau|eh+|ai+|ay+|oi+)$/;
 
 function cleanLines(text: string) {
   return text

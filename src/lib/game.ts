@@ -1,5 +1,6 @@
 // Sem importar o registro de modos (src/modes): as telas dos modos usam este arquivo.
 import { CLASSIC_STAGES } from "@/modes/classic/stages";
+import { CONTINUE_STAGES } from "@/modes/continue/stages";
 import { LYRICS_STAGES } from "@/modes/lyrics/stages";
 import { AUCTION_POINTS, auctionOf } from "@/modes/auction/logic";
 import type { Attempt, RoomState, Round, Team, TiebreakState } from "./types";
@@ -31,6 +32,7 @@ export function suddenDeathWinner(s: RoomState): Team | null {
  */
 export function missingParts(s: RoomState, r: Round) {
   if (tiebreakOf(r)) return { artist: false, title: !r.found?.title }; // desempate: só a música
+  if (r.mode === "continue") return { artist: false, title: !r.found?.title }; // continuar a letra: só a linha
   if (r.mode === "auction") {
     const hint = r.auction?.hint;
     return { artist: hint === "genre" && !r.found?.artist, title: hint === "artist" && !r.found?.title };
@@ -46,7 +48,7 @@ export const stagePoints = (r: Round) =>
     ? 0
     : r.mode === "auction"
       ? AUCTION_POINTS
-      : ((r.mode === "lyrics" ? LYRICS_STAGES : CLASSIC_STAGES)[Math.max(0, r.stage - 1)]?.points ?? 0);
+      : ((r.mode === "lyrics" ? LYRICS_STAGES : r.mode === "continue" ? CONTINUE_STAGES : CLASSIC_STAGES)[Math.max(0, r.stage - 1)]?.points ?? 0);
 export const artistPoints = (pts: number) => Math.round(pts * 0.5);
 
 /** Quanto vale acertar cada parte agora. */
@@ -85,7 +87,7 @@ export function lockedTeams(s: RoomState, r: Round | null, now: number) {
 
 /** Texto curto do bloqueio: "aguardando a música" (modo letra: "o próximo verso") ou "12s". */
 export const lockLabel = (l: { waiting: boolean; ms: number }, r?: Round | null) =>
-  l.waiting ? (r?.mode === "lyrics" ? "aguardando o próximo verso" : "aguardando a música") : `${Math.ceil(l.ms / 1000)}s`;
+  l.waiting ? (r?.mode === "lyrics" ? "aguardando o próximo verso" : r?.mode === "continue" ? "aguardando tocar de novo" : "aguardando a música") : `${Math.ceil(l.ms / 1000)}s`;
 
 /** Todos os artistas creditados, principal primeiro: "Major Lazer, Anitta, Pabllo Vittar". */
 export function artistCredits(r: { artist: string; artists?: string[] | null }) {

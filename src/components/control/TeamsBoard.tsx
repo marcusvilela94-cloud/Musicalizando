@@ -7,7 +7,7 @@ import { friendlyError } from "@/lib/errors";
 import type { Player, RoomState, Team } from "@/lib/types";
 import { getMode } from "@/modes";
 import { enabledModes } from "@/modes/schedule";
-import { LyricsShortNotice, useMatchStarter } from "./matchStart";
+import { LyricsShortNotice, PrepareProgress, useMatchStarter } from "./matchStart";
 import { playerLabel, teamLabel } from "@/lib/icons";
 
 export function settingsSummary(state: RoomState) {
@@ -128,10 +128,11 @@ export function TeamsBoard({ state, online, control, compact }: { state: RoomSta
       <div className="flex flex-wrap items-center justify-end gap-3">
         <p className="text-white/60 mr-auto">{settingsSummary(state)}</p>
         {(error ?? m.error) && <p className="w-full text-right text-rose-300 text-lg">{error ?? m.error}</p>}
+        {control && <PrepareProgress m={m} compact={compact} />}
         {control && <LyricsShortNotice m={m} compact={compact} />}
         {control ? (
           <Button className={compact ? "w-full text-2xl py-4" : "text-3xl px-12 py-5"} disabled={!canStart || busy || !!m.short} onClick={start}>
-            {busy ? "Sorteando músicas…" : "Começar! ▶"}
+            {busy ? "Preparando músicas…" : "Começar! ▶"}
           </Button>
         ) : (
           <p className="font-display text-2xl text-yellow-300">Aguardando o apresentador começar…</p>

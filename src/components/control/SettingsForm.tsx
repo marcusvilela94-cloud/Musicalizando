@@ -31,6 +31,8 @@ const MODE_HINTS: Record<ModeId, string> = {
     "A TV dá uma dica (artista, ou gênero e ano). Os times dão lances de quantos segundos precisam (começa em 20s); o menor lance ouve primeiro. Acerto vale 100. Sem penalidade.",
   lyrics:
     "Sem som: a TV mostra trechos da letra (título e artista viram ___), um verso por vez. Quanto menos versos, mais pontos: 100, 75, 50, 30 e 15 no refrão. A prévia toca na revelação.",
+  continue:
+    "A TV mostra música e artista e toca um trecho que para logo antes de uma linha: cante/digite a próxima linha. Com 2 linhas de contexto vale 100; 'Mais contexto' cai para 70 e 40.",
 };
 
 const ORDER_HINTS: Record<ModeOrder, string> = {
@@ -41,7 +43,9 @@ const ORDER_HINTS: Record<ModeOrder, string> = {
 
 /** Em quais modos cada opção vale (para esconder ou etiquetar). */
 const APPLIES = {
-  classicLike: ["classic", "lyrics"] as ModeId[], // O que vale, bloqueio, penalidade
+  scoring: ["classic", "lyrics"] as ModeId[], // O que vale
+  penalty: ["classic", "lyrics"] as ModeId[], // Penalidade
+  lock: ["classic", "lyrics", "continue"] as ModeId[], // Bloqueio após erro
   clips: ["classic"] as ModeId[], // Trechos
 };
 
@@ -92,8 +96,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     const yes = on.filter((m) => modes.includes(m));
     return yes.length && yes.length < on.length ? `só no ${yes.map((m) => getMode(m).label).join(" e no ")}` : undefined;
   };
-  const showClassic = applies(APPLIES.classicLike);
-  const classicTag = tagFor(APPLIES.classicLike);
+  const show = { scoring: applies(APPLIES.scoring), penalty: applies(APPLIES.penalty), lock: applies(APPLIES.lock) };
+  const tag = { scoring: tagFor(APPLIES.scoring), penalty: tagFor(APPLIES.penalty), lock: tagFor(APPLIES.lock) };
   const showClips = applies(APPLIES.clips);
   const clipsTag = tagFor(APPLIES.clips);
 
@@ -196,8 +200,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             className="accent-yellow-300"
           />
         </Card>
-        {showClassic && (
-          <Option title="O que vale" tag={classicTag} value={settings.scoring} onChange={(v) => update({ scoring: v })}
+        {show.scoring && (
+          <Option title="O que vale" tag={tag.scoring} value={settings.scoring} onChange={(v) => update({ scoring: v })}
             options={[["artist_title", "Artista e música"], ["title", "Só a música"]]}
             hint={settings.scoring === "artist_title" ? "Artista vale 50% dos pontos, música 100%, as duas juntas 150%." : undefined} />
         )}
@@ -215,13 +219,13 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
         )}
         <Option title="Tempo de resposta do time" value={settings.answerSeconds} onChange={(v) => update({ answerSeconds: v })}
           options={[[10, "10s"], [20, "20s"], [30, "30s"], [0, "Sem limite"]]} />
-        {showClassic && (
-          <Option title="Bloqueio após erro" tag={classicTag} value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
+        {show.lock && (
+          <Option title="Bloqueio após erro" tag={tag.lock} value={settings.lockSeconds} onChange={(v) => update({ lockSeconds: v })}
             options={[[5, "5s"], [10, "10s"], [15, "15s"], [20, "20s"], [30, "30s"]]}
             hint="Quem erra fica bloqueado; a contagem só começa quando a música volta a tocar. Se outro time errar, quem estava bloqueado é liberado." />
         )}
-        {showClassic && (
-          <Option title="Penalidade por erro" tag={classicTag} value={settings.penalty} onChange={(v) => update({ penalty: v })}
+        {show.penalty && (
+          <Option title="Penalidade por erro" tag={tag.penalty} value={settings.penalty} onChange={(v) => update({ penalty: v })}
             options={[[0, "Desligada"], [20, "−20"], [50, "−50"]]} />
         )}
         <Option title="Desempate" value={settings.tiebreak ?? "sudden"} onChange={(v) => update({ tiebreak: v })}

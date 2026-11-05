@@ -1,5 +1,6 @@
 import { auctionMode } from "./auction";
 import { classicMode } from "./classic";
+import { continueMode } from "./continue";
 import { lyricsMode } from "./lyrics";
 import type { ModeDef } from "./types";
 
@@ -8,6 +9,7 @@ export const MODES: Record<string, ModeDef> = {
   [classicMode.id]: classicMode,
   [auctionMode.id]: auctionMode,
   [lyricsMode.id]: lyricsMode,
+  [continueMode.id]: continueMode,
 };
 
 export const getMode = (id: string | null | undefined): ModeDef => MODES[id ?? ""] ?? classicMode;

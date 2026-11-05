@@ -7,6 +7,7 @@ import { currentAttempt, currentRound, ranking, teamById, tiebreakDecider, tiebr
 import type { Attempt, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
+import { contOf } from "@/modes/continue/logic";
 import { lyricsOf } from "@/modes/lyrics/LyricsView";
 
 /** Ações de quem comanda a partida (TV no "Todos jogam" ou celular do apresentador). */
@@ -20,7 +21,9 @@ export function useGameActions(state: RoomState, code: string, token: string) {
   const open = !!round && round.status === "playing" && !paused;
   // modo letra: sem "Tocar"; a música tem de 3 a 5 versos
   const lyrics = lyricsOf(round);
-  const lastStage = !!round && round.stage >= (lyrics ? lyrics.total : stages.length);
+  // continuar a letra: até 3 estágios (2, 3 e 4 linhas de contexto)
+  const cont = contOf(round);
+  const lastStage = !!round && round.stage >= (lyrics ? lyrics.total : cont ? cont.max : stages.length);
   // Leilão: "Tocar" só na prova em fila, uma vez por time
   const auction = auctionOf(round);
   const auctionPlay = !!auction && auction.phase === "proving" && !entryPlayed(auction);
@@ -56,14 +59,14 @@ export function useGameActions(state: RoomState, code: string, token: string) {
       if (window.confirm("Encerrar a partida agora?")) run(() => api.finishMatch(code, token));
     },
   };
-  return { round, attempt, paused, stages, auction, lyrics, can, actions, error, setError, run };
+  return { round, attempt, paused, stages, auction, lyrics, lastStage, can, actions, error, setError, run };
 }
 
 export type GameActions = ReturnType<typeof useGameActions>;
 
 /** Botões de controle. `size="tv"` = botões grandes com a dica do atalho de teclado. */
 export function GameControls({ g, state, size = "phone" }: { g: GameActions; state: RoomState; size?: "tv" | "phone" }) {
-  const { round, can, actions, paused, stages, auction, lyrics } = g;
+  const { round, can, actions, paused, stages, auction, lyrics, lastStage } = g;
   if (!round) return null;
   const tv = size === "tv";
   const k = (key: string) => (tv ? <kbd className="ml-2 rounded bg-black/25 px-1.5 text-sm opacity-70">{key}</kbd> : null);
@@ -115,13 +118,15 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
               {round.played_stage === round.stage ? "🔁 Repetir" : "▶ Tocar"}
               {k(round.played_stage === round.stage ? "R" : "espaço")}
             </Button>
-            {round.stage >= stages.length ? (
+            {lastStage ? (
               <Button variant="danger" className={big} disabled={!can.reveal} onClick={actions.reveal}>
                 🏳️ Revelar (ninguém acertou)
               </Button>
             ) : (
               <Button variant="secondary" className={big} disabled={!can.next} onClick={actions.next}>
-                ⏭ Próximo trecho{nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}
+                {round.mode === "continue"
+                  ? `➕ Mais contexto${nextStage ? ` (${nextStage.seconds} linhas · ${nextStage.points})` : ""}`
+                  : `⏭ Próximo trecho${nextStage ? ` (${nextStage.seconds}s · ${nextStage.points})` : ""}`}
                 {k("→")}
               </Button>
             )}

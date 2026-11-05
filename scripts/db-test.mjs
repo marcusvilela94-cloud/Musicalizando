@@ -938,6 +938,83 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   console.log("ok tema e cores");
 }
 
+// ---------- modo "Continuar a letra" ----------
+{
+  const cl = async (a, t) => (await sql("select public.npl_classify_line($1, $2) as r", [a, t]))[0].r;
+  const L = "E o que foi prometido ninguém prometeu";
+  assert.equal(await cl("e o que foi prometido ninguem prometeu", L), "ok");
+  assert.equal(await cl("o que foi prometido ninguem", L), "ok", "70%+ das palavras na ordem");
+  assert.equal(await cl("o que foi prometido", L), "doubt", "entre 50% e 70% = quase");
+  assert.equal(await cl("ninguem prometeu", L), "wrong");
+  assert.equal(await cl("prometeu ninguém prometido foi que o e", L), "wrong", "fora de ordem não vale");
+  assert.equal(await cl("e o que foi prometdo ninguem prometeu", L), "ok", "erro de digitação");
+  assert.equal(await cl("", L), "empty");
+  assert.equal(await cl("dont stop me now", "Don't stop me now"), "ok");
+
+  const { code: cc } = await rpc("npl_create_room", OWNER, { mode: "continue", modePool: ["continue"], rounds: 5, answerSeconds: 10, penalty: 50, scoring: "artist_title" });
+  let sc = await rpc("npl_get_state", cc);
+  assert.equal(sc.room.settings.mode, "continue");
+  await rpc("npl_join", cc, P(70), "Ana");
+  await rpc("npl_join", cc, P(71), "Bia");
+  sc = await rpc("npl_get_state", cc);
+  const [CA, CB] = sc.teams.map((t) => t.id);
+  await rpc("npl_set_team", cc, P(70), CA);
+  await rpc("npl_set_team", cc, P(71), CB);
+  const cont = {
+    lines: [
+      { text: "Todos os dias quando acordo", start: 1, end: 4 },
+      { text: "Não tenho mais o tempo que passou", start: 4, end: 8 },
+      { text: "Mas tenho muito tempo", start: 8.5, end: 11 },
+      { text: "Temos todo o tempo do mundo", start: 11, end: 14.5 },
+    ],
+    hidden: { text: L, start: 15, end: 18.2 },
+  };
+  const ct = [1, 2, 3].map((i) => ({
+    deezer_id: 9500 + i, title: `Faixa ${i}`, title_short: `Faixa ${i}`, artist: "Banda", artists: ["Banda"], cover: "x",
+    mode: "continue", cont: i === 3 ? { lines: [], hidden: {} } : cont,
+  }));
+  await rpc("npl_start_match", cc, OWNER, ct, 3);
+  sc = await rpc("npl_get_state", cc);
+  let rc = sc.rounds[0];
+  assert.equal(rc.mode, "continue");
+  await rpc("npl_round_begin", cc, OWNER, rc.id, [], [], {});
+  sc = await rpc("npl_get_state", cc);
+  rc = sc.rounds[0];
+  assert.equal(rc.cont.ctx, 2);
+  assert.equal(rc.cont.max, 3);
+  assert.deepEqual(rc.cont.lines.map((l) => l.text), ["Mas tenho muito tempo", "Temos todo o tempo do mundo"], "2 linhas antes");
+  assert.equal(rc.cont.hidden.words, 7, "nº de palavras da escondida");
+  assert.ok(!JSON.stringify(sc).includes("prometido"), "linha escondida não vaza");
+  // tocar e erro: bloqueio aguarda a música voltar
+  assert.equal((await rpc("npl_play", cc, OWNER, rc.id, 1, false)).ok, true);
+  let bc = await rpc("npl_buzz", cc, P(70), rc.id);
+  assert.equal((await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "o que foi prometido")).result, "almost", "quase");
+  await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "nada a ver com nada");
+  sc = await rpc("npl_get_state", cc);
+  assert.equal(sc.teams.find((t) => t.id === CA).score, 0, "sem penalidade neste modo");
+  assert.equal(sc.rounds[0].locks[CA].until, null, "aguardando tocar de novo");
+  // mais contexto: 3 linhas, vale 70
+  const more = await rpc("npl_play", cc, OWNER, rc.id, 1, true);
+  assert.equal(more.ok, true);
+  assert.equal(more.round.cont.ctx, 3);
+  assert.equal(more.round.cont.lines.length, 3);
+  assert.ok(more.round.locks[CA].until, "contagem começou");
+  bc = await rpc("npl_buzz", cc, P(71), rc.id);
+  const rr = await rpc("npl_submit_answer", cc, P(71), bc.attempt_id, "", "e o que foi prometido ninguem prometeu");
+  assert.equal(rr.result, "correct", "só a linha vale (mesmo com 'Artista e música')");
+  assert.equal(rr.points, 70);
+  sc = await rpc("npl_get_state", cc);
+  assert.equal(sc.rounds[0].status, "revealed");
+  assert.equal(sc.rounds[0].cont.reveal.text, L, "revelação mostra a linha");
+  assert.equal(Number(sc.rounds[0].cont.reveal.end), 18.2);
+  // apresentador vê a linha certa
+  await rpc("npl_next_round", cc, OWNER, 1);
+  // música sem dados válidos não entra no modo
+  await rpc("npl_next_round", cc, OWNER, 1);
+  sc = await rpc("npl_get_state", cc);
+  console.log("ok continuar a letra");
+}
+
 const sent = await sql("select count(*)::int as n, min(topic) as t from realtime.sent");
 assert.ok(sent[0].n > 20);
 assert.match(sent[0].t, /^npl_room_/);

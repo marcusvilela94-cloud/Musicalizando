@@ -16,6 +16,9 @@ type Result = {
   hasSynced: boolean;
   offset: number | null;
   lines: SyncLine[];
+  continue?:
+    | { ok: true; offset: number; plan: { lines: { text: string; start: number; end: number }[]; hidden: { text: string; start: number; end: number } } }
+    | { ok: false; reason: string };
 };
 type Item = { id: number; title: string; artist: string; status: "waiting" | "running" | "done" | "error"; result?: Result; error?: string };
 
@@ -31,6 +34,11 @@ const avgConf = (r: Result) => {
 
 export function LabSync() {
   const [url, setUrl] = useState("");
+  // senha do lab (LAB_PASSWORD): fica só nesta aba
+  const [pwd, setPwd] = useState("");
+  useEffect(() => {
+    setPwd(sessionStorage.getItem("npl_lab_pwd") ?? "");
+  }, []);
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -72,7 +80,7 @@ export function LabSync() {
         last = Date.now();
         setItems((xs) => xs.map((x, k) => (k === i ? { ...x, status: "running" } : x)));
         try {
-          const r = await fetch(`/api/lab/sync/${queue[i].id}`);
+          const r = await fetch(`/api/lab/sync/${queue[i].id}`, { headers: { "x-lab-password": pwd } });
           const j = await r.json();
           if (!r.ok) throw new Error(j.error ?? `Erro ${r.status}`);
           setItems((xs) => xs.map((x, k) => (k === i ? { ...x, status: "done", result: j } : x)));
@@ -97,6 +105,16 @@ export function LabSync() {
         Teste de viabilidade do modo “Continuar a letra”. Transcreve a prévia (Groq whisper-large-v3), alinha com a letra (LRCLIB) e
         mostra em que segundo cada linha começa. Uma música a cada ~3 s (limite gratuito do Groq).
       </p>
+      <input
+        type="password"
+        value={pwd}
+        onChange={(e) => {
+          setPwd(e.target.value);
+          sessionStorage.setItem("npl_lab_pwd", e.target.value);
+        }}
+        placeholder="Senha do lab (LAB_PASSWORD)"
+        className="w-72 rounded-xl bg-white/90 px-3 py-2 text-violet-950 outline-none"
+      />
       <div className="flex flex-wrap gap-2">
         <input
           value={url}
@@ -166,6 +184,7 @@ function Card({ item }: { item: Item }) {
           )}
         </span>
       </div>
+      {r?.continue && <ContinueVerdict r={r} />}
       {r && <Player r={r} />}
     </section>
   );
@@ -267,6 +286,47 @@ function Player({ r }: { r: Result }) {
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** O que o modo "Continuar a letra" faria com esta música. */
+function ContinueVerdict({ r }: { r: Result }) {
+  const v = r.continue!;
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [state, setState] = useState<string | null>(null);
+  if (!v.ok) return <p className="mt-2 rounded-lg bg-rose-500/20 px-3 py-2 text-sm">🎤 Continuar a letra: <b>fora</b> — {v.reason}</p>;
+  const { plan } = v;
+  // simula a rodada: começa no início de uma linha (2 antes da escondida) e para 0,3 s antes
+  const play = (ctx: number, reveal = false) => {
+    if (!audio.current) audio.current = new Audio(r.preview);
+    const a = audio.current;
+    a.pause();
+    const from = reveal ? Math.max(0, plan.hidden.start - 0.3) : plan.lines[Math.max(0, plan.lines.length - ctx)].start;
+    const to = reveal ? plan.hidden.end + 1 : plan.hidden.start - 0.3;
+    a.currentTime = from;
+    setState(reveal ? "tocando a linha escondida…" : `${ctx} linhas de contexto…`);
+    a.play().catch(() => {});
+    const check = () => {
+      if (a.currentTime >= to) {
+        a.pause();
+        setState(reveal ? "fim da linha" : "parou: qual é a próxima linha?");
+      } else if (!a.paused) requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  };
+  return (
+    <div className="mt-2 flex flex-col gap-1 rounded-lg bg-emerald-500/15 px-3 py-2 text-sm">
+      <p>
+        🎤 Continuar a letra: esconderia <b>“{plan.hidden.text}”</b> ({plan.hidden.start.toFixed(2)}s → {plan.hidden.end.toFixed(2)}s) · {plan.lines.length} linhas de contexto possíveis · offset {v.offset}s
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {[2, 3, 4].filter((n) => n <= plan.lines.length).map((n) => (
+          <button key={n} onClick={() => play(n)} className="rounded-md bg-black/30 px-2 py-0.5">▶ {n} linhas</button>
+        ))}
+        <button onClick={() => play(0, true)} className="rounded-md bg-black/30 px-2 py-0.5">▶ revelação</button>
+        {state && <span className="text-white/70">{state}</span>}
+      </div>
     </div>
   );
 }

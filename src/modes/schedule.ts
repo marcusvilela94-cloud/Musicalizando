@@ -1,7 +1,7 @@
 import type { ModeId, RoomSettings } from "@/lib/types";
 
 /** Ordem da lista na configuração (e dos blocos). Modo novo: acrescentar aqui. */
-export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics"];
+export const MODE_LIST: ModeId[] = ["classic", "auction", "lyrics", "continue"];
 
 export type ModeOrder = "alternate" | "random" | "blocks";
 

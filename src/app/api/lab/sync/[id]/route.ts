@@ -1,11 +1,14 @@
 import { getTrack } from "@/lib/deezer";
+import { labDenied } from "@/lib/labAuth";
 import { analyzeTrack } from "@/lib/sync";
 
 // GET /api/lab/sync/{deezerId} -> linhas da letra com o segundo em que começam na prévia.
 // Página de teste (/lab/sync). A transcrição usa o Groq (GROQ_API_KEY), só aqui no servidor.
 export const maxDuration = 60;
 
-export async function GET(_request: Request, ctx: RouteContext<"/api/lab/sync/[id]">) {
+export async function GET(request: Request, ctx: RouteContext<"/api/lab/sync/[id]">) {
+  const denied = labDenied(request);
+  if (denied) return denied;
   const { id } = await ctx.params;
   if (!/^\d+$/.test(id)) return Response.json({ error: "ID inválido" }, { status: 400 });
   try {

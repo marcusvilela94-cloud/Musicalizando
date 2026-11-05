@@ -5,7 +5,7 @@
 //  3. Alinhamento local (Smith-Waterman) palavra a palavra entre a
 //     transcrição e a letra inteira, tolerante a erros (Levenshtein).
 import "server-only";
-import { fetchLyricsRecord, fold } from "./lyrics";
+import { FILLER_RE, fetchLyricsRecord, fold } from "./lyrics";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 /** Plano gratuito: 20 pedidos/minuto -> no mínimo 3,1 s entre chamadas (por instância). */
@@ -223,8 +223,91 @@ function align(words: Word[], lines: Line[]): Omit<SyncResult, "language" | "tra
   return { words: n, offset, lines: out };
 }
 
-/** Analisa uma faixa: baixa a prévia, transcreve, busca a letra e alinha. */
-export async function analyzeTrack(t: { preview: string; titleShort: string; artist: string; duration?: number }): Promise<SyncResult> {
+// ---------------------------------------------------------------------
+// Modo "Continuar a letra": escolha da linha escondida
+// ---------------------------------------------------------------------
+export type ContLine = { text: string; start: number; end: number };
+/** O que vai para npl_tracks.cont (tempos em segundos da prévia). */
+export type ContinuePlan = { lines: ContLine[]; hidden: ContLine };
+export type ContinueVerdict = { ok: true; plan: ContinuePlan; offset: number } | { ok: false; reason: string };
+
+const PREVIEW_SECS = 30;
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/**
+ * Decide se a música serve para o modo e qual linha esconder:
+ *  - offset confiável: 2+ linhas ouvidas com confiança >= 70% e todas
+ *    concordando (lrc - início) com a mediana em até 1 s;
+ *  - todas as linhas da prévia usam os tempos do LRC (com o offset);
+ *  - linha escondida: começa entre 8 e 24 s, termina 1 s antes do fim,
+ *    4 a 12 palavras, até ~3,5 palavras/s, não é coro entre parênteses,
+ *    onomatopeia nem o nome do artista, confiança >= 70%, e tem 2+ linhas
+ *    antes dentro da prévia. Preferência: as que mais se repetem (refrão).
+ */
+function decideContinue(lines: Line[], aligned: SyncLine[], artist: string): ContinueVerdict {
+  if (!lines.length || lines.some((l) => l.lrc === null)) return { ok: false, reason: "sem letra sincronizada (LRC)" };
+  const good = aligned.filter((l) => l.source === "audio" && !l.cut && l.confidence >= 70 && lines[l.idx]?.lrc !== null);
+  // a confiança do align já ganhou bônus por concordar com o LRC: recalcula sem depender disso
+  if (good.length < 2) return { ok: false, reason: `poucas linhas ouvidas com confiança (${good.length})` };
+  const d = good.map((l) => lines[l.idx].lrc! - l.start).sort((x, y) => x - y);
+  const offset = d[Math.floor(d.length / 2)];
+  const worst = Math.max(...d.map((x) => Math.abs(x - offset)));
+  if (worst > 1) return { ok: false, reason: `linhas discordam do LRC em até ${worst.toFixed(1)} s` };
+
+  // tempos de todas as linhas na prévia (pelo LRC)
+  const at = lines.map((l, i) => {
+    const start = l.lrc! - offset;
+    const next = lines[i + 1]?.lrc;
+    const end = next !== undefined && next !== null ? next - offset : start + Math.min(6, l.tokens.length * 0.45);
+    return { start, end };
+  });
+  const conf = new Map(aligned.filter((l) => l.source === "audio").map((l) => [l.idx, l.confidence]));
+  const count = new Map<string, number>();
+  for (const l of lines) count.set(l.tokens.join(" "), (count.get(l.tokens.join(" ")) ?? 0) + 1);
+  const artistKey = fold(artist);
+
+  const cands: { i: number; rep: number; same: boolean; conf: number }[] = [];
+  const why = new Map<string, number>();
+  const no = (r: string) => (why.set(r, (why.get(r) ?? 0) + 1), false);
+  lines.forEach((l, i) => {
+    const { start, end } = at[i];
+    const words = l.tokens.length;
+    const k = l.tokens.join(" ");
+    const ok =
+      (start >= 8 && start <= 24 && end <= PREVIEW_SECS - 1) || no("fora da janela 8–24 s");
+    if (!ok) return;
+    if (words < 4 || words > 12) return void no("tamanho");
+    if (words / Math.max(0.3, end - start) > 3.5) return void no("rápida demais");
+    if (/^\s*\(.*\)\s*$/.test(l.text)) return void no("coro entre parênteses");
+    if (l.tokens.every((w) => FILLER_RE.test(w))) return void no("onomatopeia");
+    if (artistKey && (k === artistKey || (k.includes(artistKey) && words <= artistKey.split(" ").length + 2))) return void no("nome do artista");
+    if ((conf.get(i) ?? 0) < 70) return void no("confiança baixa");
+    // contexto: pelo menos 2 linhas inteiras antes, dentro da prévia
+    if (i < 2 || at[i - 2].start < 0.05) return void no("pouco contexto antes");
+    cands.push({ i, rep: count.get(k) ?? 1, same: i > 0 && lines[i - 1].tokens.join(" ") === k, conf: conf.get(i) ?? 0 });
+  });
+  if (!cands.length) {
+    const top = [...why.entries()].sort((a, b) => b[1] - a[1]).map(([r]) => r).slice(0, 2).join(", ");
+    return { ok: false, reason: `nenhuma linha serve${top ? ` (${top})` : ""}` };
+  }
+  // preferência: as que mais se repetem (refrão), depois diferente da anterior, depois confiança
+  cands.sort((a, b) => b.rep - a.rep || Number(a.same) - Number(b.same) || b.conf - a.conf);
+  const h = cands[0].i;
+  const ctx: ContLine[] = [];
+  for (let j = Math.max(0, h - 4); j < h; j++) {
+    if (at[j].start < 0.05) continue; // só linhas que começam dentro da prévia
+    ctx.push({ text: lines[j].text, start: r2(at[j].start), end: r2(at[j].end) });
+  }
+  return {
+    ok: true,
+    offset: r2(offset),
+    plan: { lines: ctx.slice(-4), hidden: { text: lines[h].text, start: r2(at[h].start), end: r2(Math.min(PREVIEW_SECS, at[h].end)) } },
+  };
+}
+
+type Analysis = { lines: Line[]; aligned: SyncLine[]; result: SyncResult };
+
+async function runAnalysis(t: { preview: string; titleShort: string; artist: string; duration?: number }): Promise<Analysis> {
   const [audioRes, lrc] = await Promise.all([
     fetch(t.preview, { cache: "no-store", signal: AbortSignal.timeout(15000) }),
     fetchLyricsRecord(t.titleShort, t.artist, t.duration).catch(() => null),
@@ -235,5 +318,22 @@ export async function analyzeTrack(t: { preview: string; titleShort: string; art
   const g = await transcribe(await audioRes.arrayBuffer());
   const words = (g.words ?? []).filter((w) => typeof w.start === "number" && w.word?.trim());
   const r = align(words, lines);
-  return { language: g.language ?? null, transcript: (g.text ?? "").trim(), hasSynced: !!lrc.syncedLyrics?.trim(), ...r };
+  return {
+    lines,
+    aligned: r.lines,
+    result: { language: g.language ?? null, transcript: (g.text ?? "").trim(), hasSynced: !!lrc.syncedLyrics?.trim(), ...r },
+  };
+}
+
+/** /lab/sync: alinhamento + o que o modo "Continuar a letra" decidiria. */
+export async function analyzeTrack(t: { preview: string; titleShort: string; artist: string; duration?: number }) {
+  const a = await runAnalysis(t);
+  return { ...a.result, continue: decideContinue(a.lines, a.aligned, t.artist) };
+}
+
+/** Preparação da partida: só o veredito (e o plano) do modo "Continuar a letra". */
+export async function prepareContinue(t: { preview: string; titleShort: string; artist: string; duration?: number }): Promise<ContinueVerdict> {
+  const a = await runAnalysis(t);
+  if (!a.result.hasSynced) return { ok: false, reason: "sem letra sincronizada (LRC)" };
+  return decideContinue(a.lines, a.aligned, t.artist);
 }

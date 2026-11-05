@@ -130,7 +130,7 @@ export function AnswerForm({
       <FoundLine state={state} round={round} />
       {almost && (
         <p className="npl-pop rounded-2xl bg-amber-400 px-4 py-3 font-display text-xl text-violet-950">
-          Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.
+          {round.mode === "continue" ? "Quase! Confira a linha e envie de novo." : <>Quase! Confira a escrita {almost.artist === "doubt" && almost.title === "doubt" ? "dos dois" : almost.artist === "doubt" ? "do artista" : "da música"} e envie de novo.</>}
         </p>
       )}
       {need.artist && (
@@ -148,7 +148,7 @@ export function AnswerForm({
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Música"
+          placeholder={round.mode === "continue" ? "Continue a letra…" : "Música"}
           autoComplete="off"
           autoFocus={!need.artist}
           className={field(almost?.title === "doubt")}
