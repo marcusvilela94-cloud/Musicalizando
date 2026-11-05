@@ -106,8 +106,26 @@ export const api = {
   /** Cache da sincronização ("Continuar a letra"): quais faixas já foram analisadas. */
   // Instrumentos: o jogo só lê o cache e cria pedidos (quem separa é o programa no PC)
   stemsStatus: (ids: number[]) => call<StemsStatus>("npl_stems_status", { p_ids: ids }, false),
-  stemsRequest: (code: string, owner: string, ids: number[]) =>
-    call<number>("npl_stems_request", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
+  /** tracks: os dados das músicas (ficam guardados para a fonte "Músicas já preparadas") */
+  stemsRequest: (code: string, owner: string, ids: number[], tracks: PickedTrack[] = []) =>
+    call<number>(
+      "npl_stems_request",
+      {
+        p_code: code,
+        p_owner_token: owner,
+        p_ids: ids,
+        p_tracks: tracks
+          .filter((t) => ids.includes(t.deezer_id))
+          .map(({ deezer_id, title, title_short, artist, artist_id, album, album_id, cover }) => ({
+            deezer_id, title, title_short, artist, artist_id, album, album_id, cover,
+          })),
+      },
+      false,
+    ),
+  /** Fontes recentes (as últimas 10 usadas para começar uma partida). */
+  recentSources: () => call<MusicSource[]>("npl_recent_sources", {}, false),
+  /** Começou a partida: as fontes da sala viram as mais recentes. */
+  sourcesUsed: (code: string, owner: string) => call<void>("npl_sources_used", { p_code: code, p_owner_token: owner }, false),
   stemsSetPaused: (code: string, owner: string, paused: boolean) =>
     call<boolean>("npl_stems_set_paused", { p_code: code, p_owner_token: owner, p_paused: paused }, false),
   /** Tira da fila os pedidos que ainda não começaram (a atual e o cache ficam). */

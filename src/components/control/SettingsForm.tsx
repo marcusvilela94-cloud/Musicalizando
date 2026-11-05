@@ -4,7 +4,7 @@ import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { OBRA_PACKS, obraPacksOf } from "@/lib/obra";
-import type { ArtistLevel, ModeId, MusicSource, ObraPackId, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
+import type { ArtistLevel, ModeId, MusicSource, ObraPackId, PickedTrack, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
 import { STEM_EMOJI, STEM_LABEL, STEM_ORDER, fmtDuration, stemsEta } from "@/modes/stems/logic";
 import { getMode } from "@/modes";
 import { MODE_LIST, TURN_MODES, enabledModes, playingTeamCount, turnRounds, type ModeOrder } from "@/modes/schedule";
@@ -135,6 +135,7 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     if (settings.sources.some((s) => sameSource(s, src))) return;
     update({ sources: [...settings.sources, src] });
   };
+  const cacheSongs = useCacheSongs();
   const removeSource = (src: MusicSource) => update({ sources: settings.sources.filter((s) => !sameSource(s, src)) });
   const setLevel = (src: MusicSource, level: ArtistLevel) =>
     update({ sources: settings.sources.map((s) => (sameSource(s, src) && s.type === "artist" ? { ...s, level } : s)) });
@@ -273,12 +274,12 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
         <div className="flex flex-wrap gap-2">
           {settings.sources.map((s) => (
             <span key={`${s.type}:${s.id}`} className="inline-flex items-center gap-2 rounded-full bg-white/15 py-1 pl-4 pr-1 text-lg">
-              <span className="text-white/60 text-sm">{s.type === "artist" ? "Artista" : s.type === "preset" ? "Pronta" : "Playlist"}</span>
+              <span className="text-white/60 text-sm">{SOURCE_KIND[s.type]}</span>
               {s.type === "artist" && s.picture && (
                 // eslint-disable-next-line @next/next/no-img-element -- foto do Deezer
                 <img src={s.picture} alt="" className="h-7 w-7 rounded-full" />
               )}
-              {s.label}
+              {s.type === "cache" ? `🥁 ${s.label}${cacheSongs !== null ? ` (${cacheSongs})` : ""}` : s.label}
               {s.type === "artist" && (
                 <select
                   value={s.level ?? "known"}
@@ -302,6 +303,13 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
             </span>
           ))}
         </div>
+        <RecentSources
+          selected={settings.sources}
+          onAdd={addSource}
+          stemsOn={on.includes("stems")}
+          versionFilter={settings.versionFilter !== false}
+          cacheSongs={cacheSongs}
+        />
         <div className="grid gap-4 md:grid-cols-3">
           <div className="flex flex-col gap-2">
             <p className="text-white/70">Playlists prontas</p>
@@ -310,6 +318,16 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
                 + {p.label}
               </Button>
             ))}
+            {(cacheSongs ?? 0) >= CACHE_SOURCE_MIN && (
+              <Button
+                variant="secondary"
+                onClick={() => addSource(CACHE_SOURCE)}
+                disabled={settings.sources.some((s) => sameSource(s, CACHE_SOURCE))}
+                title="Todas as músicas já separadas para o modo Instrumentos, misturadas (nos outros modos são músicas normais)"
+              >
+                + 🥁 Músicas já preparadas ({cacheSongs})
+              </Button>
+            )}
           </div>
           <PlaylistLinkInput onAdd={addSource} />
           <ArtistSearch onAdd={addSource} />
@@ -483,7 +501,7 @@ function StemsPanel({
   const instrument = settings.stemsInstrument ?? "random";
   const vf = settings.versionFilter !== false;
   const srcKey = JSON.stringify([settings.sources, vf]);
-  const [pool, setPool] = useState<{ key: string; ids: number[] } | null>(null);
+  const [pool, setPool] = useState<{ key: string; ids: number[]; tracks: PickedTrack[] } | null>(null);
   const [poolError, setPoolError] = useState<string | null>(null);
   const [status, setStatus] = useState<StemsStatus | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -499,7 +517,7 @@ function StemsPanel({
         .pool(sources, versionFilter)
         .then((r) => {
           if (!alive) return;
-          setPool({ key: srcKey, ids: r.tracks.map((x) => x.deezer_id) });
+          setPool({ key: srcKey, ids: r.tracks.map((x) => x.deezer_id), tracks: r.tracks });
           setPoolError(null);
         })
         .catch((e) => alive && setPoolError(friendlyError(e)));
@@ -571,7 +589,7 @@ function StemsPanel({
     setMsg(null);
     try {
       const have = new Set(status?.ready.map((r) => r.deezer_id));
-      const n = await api.stemsRequest(code, token, ids.filter((id) => !have.has(id)));
+      const n = await api.stemsRequest(code, token, ids.filter((id) => !have.has(id)), pool?.tracks);
       setMsg(n ? `${n} música${n === 1 ? "" : "s"} na fila.` : "Nada novo para pedir: as que faltam já estão na fila.");
       setStatus(await api.stemsStatus(ids));
     } catch (e) {
@@ -678,6 +696,158 @@ function StemsPanel({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Fonte com todas as músicas já separadas pelo separador (aparece com 5 ou mais no cache). */
+const CACHE_SOURCE: MusicSource = { type: "cache", id: "stems", label: "Músicas já preparadas" };
+const CACHE_SOURCE_MIN = 5;
+const SOURCE_KIND: Record<MusicSource["type"], string> = { artist: "Artista", preset: "Pronta", playlist: "Playlist", cache: "Preparadas" };
+const SOURCE_EMOJI: Record<MusicSource["type"], string> = { artist: "🎤", preset: "🔥", playlist: "🎶", cache: "🥁" };
+const sourceKey = (s: MusicSource) => `${s.type}:${s.id}`;
+
+/** Quantas músicas há no cache dos Instrumentos (atualiza a cada 30 s). */
+function useCacheSongs() {
+  const [n, setN] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const tick = () =>
+      api
+        .stemsStatus([])
+        .then((st) => alive && setN(st.cache.songs))
+        .catch(() => {});
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  return n;
+}
+
+/** Músicas de cada fonte (para "48 de 50 prontas"): uma consulta por fonte e filtro, guardada na aba. */
+const sourceIds = new Map<string, Promise<number[]>>();
+function idsOf(s: MusicSource, versionFilter: boolean) {
+  const k = JSON.stringify([s.type, s.id, s.type === "artist" ? (s.level ?? "known") : null, versionFilter]);
+  let p = sourceIds.get(k);
+  if (!p) {
+    p = deezer.pool([s], versionFilter).then((r) => r.tracks.map((t) => t.deezer_id));
+    p.catch(() => sourceIds.delete(k)); // erro: tenta de novo na próxima vez
+    sourceIds.set(k, p);
+  }
+  return p;
+}
+
+/**
+ * "Fontes recentes": as últimas 10 usadas, num clique. Com os Instrumentos
+ * ligados, mostra quantas músicas de cada uma já estão separadas.
+ */
+function RecentSources({
+  selected,
+  onAdd,
+  stemsOn,
+  versionFilter,
+  cacheSongs,
+}: {
+  selected: MusicSource[];
+  onAdd: (s: MusicSource) => void;
+  stemsOn: boolean;
+  versionFilter: boolean;
+  cacheSongs: number | null;
+}) {
+  const [recent, setRecent] = useState<MusicSource[] | null>(null);
+  const [ready, setReady] = useState<Record<string, { ready: number; total: number } | "error">>({});
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .recentSources()
+      .then((r) => alive && setRecent(r ?? []))
+      .catch(() => alive && setRecent([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // a fonte do cache só aparece com músicas suficientes
+  const list = (recent ?? []).filter((s) => s.type !== "cache" || (cacheSongs ?? 0) >= CACHE_SOURCE_MIN);
+  const listKey = JSON.stringify(list);
+
+  // Instrumentos: prontas de cada atalho (uma fonte por vez; a cada 30 s confere de novo o cache)
+  useEffect(() => {
+    if (!stemsOn) return;
+    let alive = true;
+    const items = JSON.parse(listKey) as MusicSource[];
+    const run = async () => {
+      for (const s of items) {
+        if (!alive) return;
+        if (s.type === "cache") continue;
+        try {
+          const ids = await idsOf(s, versionFilter);
+          const st = await api.stemsStatus(ids);
+          if (alive) setReady((r) => ({ ...r, [sourceKey(s)]: { ready: st.ready.length, total: ids.length } }));
+        } catch {
+          if (alive) setReady((r) => ({ ...r, [sourceKey(s)]: "error" }));
+        }
+      }
+    };
+    void run();
+    const t = setInterval(run, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [stemsOn, listKey, versionFilter]);
+
+  if (!list.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-white/70">Fontes recentes</p>
+      <div className="flex flex-wrap gap-2">
+        {list.map((s) => {
+          const on = selected.some((x) => sameSource(x, s));
+          const pic = s.type === "artist" || s.type === "playlist" ? s.picture : null;
+          const r = s.type === "cache" ? (cacheSongs !== null ? { ready: cacheSongs, total: cacheSongs } : undefined) : ready[sourceKey(s)];
+          return (
+            <button
+              key={sourceKey(s)}
+              onClick={() => onAdd(s)}
+              disabled={on}
+              title={on ? "Já está nas fontes" : `Adicionar ${s.label}`}
+              className={`flex items-center gap-2 rounded-2xl py-1.5 pl-1.5 pr-3 text-left transition ${
+                on ? "cursor-default bg-yellow-300/25 opacity-60" : "bg-white/10 hover:bg-white/20"
+              }`}
+            >
+              {pic ? (
+                // eslint-disable-next-line @next/next/no-img-element -- capa do Deezer
+                <img src={pic} alt="" className={`h-10 w-10 object-cover ${s.type === "artist" ? "rounded-full" : "rounded-lg"}`} />
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/20 text-2xl">{SOURCE_EMOJI[s.type]}</span>
+              )}
+              <span className="flex flex-col leading-tight">
+                <span className="font-display text-lg">{on ? "✓ " : "+ "}{s.label}</span>
+                <span className="text-xs text-white/60">
+                  {SOURCE_KIND[s.type]}
+                  {s.type === "artist" && ` · ${LEVELS.find(([v]) => v === (s.level ?? "known"))?.[1]}`}
+                  {stemsOn &&
+                    (r === "error" ? (
+                      " · não deu para contar"
+                    ) : r ? (
+                      <span className={r.total && r.ready >= r.total ? "text-emerald-300" : "text-yellow-200"}>
+                        {" "}
+                        · 🥁 {r.ready} de {r.total} prontas
+                      </span>
+                    ) : (
+                      " · contando…"
+                    ))}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

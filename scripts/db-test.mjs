@@ -1330,6 +1330,51 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     assert.deepEqual(st.queue, { processing: 1 }, "a que está sendo separada fica");
     assert.equal(st.ready.length, 1, "o cache fica");
     await db.exec("delete from npl_stems_cache; delete from npl_stems_queue;");
+
+    // dados da música: vêm no pedido, passam para o cache; as antigas são completadas (sem sobrescrever)
+    await rpc("npl_stems_request", sc0, OWNER, [601, 602], [
+      { deezer_id: 601, title: "Tempo Perdido", artist: "Legião Urbana", cover: "https://x/c.jpg", album_id: 7, extra: "fora" },
+      { deezer_id: 999, title: "Não pedida", artist: "X" },
+    ]);
+    await rpc("npl_stems_claim");
+    await rpc("npl_stems_done", 601, "key-601", paths("key-601"), 1000, { drums: true, bass: true, guitar: true, vocals: true }, {});
+    await rpc("npl_stems_claim");
+    await rpc("npl_stems_done", 602, "key-602", paths("key-602"), 1000, { drums: true, bass: true, guitar: true, vocals: true }, {});
+    let cached = await rpc("npl_stems_cached");
+    const m601 = cached.find((x) => x.deezer_id === 601).meta;
+    assert.deepEqual(m601, { title: "Tempo Perdido", title_short: "Tempo Perdido", artist: "Legião Urbana", cover: "https://x/c.jpg", album_id: 7 });
+    assert.equal(cached.find((x) => x.deezer_id === 602).meta, null, "sem dados: o servidor completa");
+    assert.equal(await rpc("npl_stems_fill_meta", [{ deezer_id: 602, title: "Índios", artist: "Legião Urbana" }, { deezer_id: 601, title: "Trocado", artist: "Y" }]), 2, "fila + cache da 602; a 601 fica");
+    cached = await rpc("npl_stems_cached");
+    assert.equal(cached.find((x) => x.deezer_id === 602).meta.title, "Índios");
+    assert.equal(cached.find((x) => x.deezer_id === 601).meta.title, "Tempo Perdido", "não sobrescreve");
+    await db.exec("delete from npl_stems_cache; delete from npl_stems_queue;");
+
+    // fontes recentes: as da sala ao começar, no máximo 10, a mais nova primeiro
+    await db.exec("delete from npl_recent_sources");
+    await fails(rpc("npl_sources_used", sc0, "token-errado"), "");
+    for (let i = 0; i < 12; i++) {
+      await rpc("npl_update_settings", sc0, OWNER, { sources: [{ type: "playlist", id: `p${i}`, label: `Lista ${i}`, picture: "https://x/p.jpg" }] });
+      await rpc("npl_sources_used", sc0, OWNER);
+    }
+    await rpc("npl_update_settings", sc0, OWNER, {
+      sources: [
+        { type: "artist", id: "27", label: "Daft Punk", level: "fan", picture: "javascript:alert(1)" },
+        { type: "cache", id: "stems", label: "Músicas já preparadas" },
+        { type: "playlist", id: "p5", label: "Lista 5 (de novo)" },
+        { type: "hack", id: "x", label: "?" },
+      ],
+    });
+    await rpc("npl_sources_used", sc0, OWNER);
+    const recent = await rpc("npl_recent_sources");
+    assert.equal(recent.length, 10);
+    assert.deepEqual(recent.slice(0, 3).map((s) => s.id), ["27", "stems", "p5"]);
+    assert.deepEqual(recent[0], { type: "artist", id: "27", label: "Daft Punk", level: "fan" }, "nível guardado, foto inválida fora");
+    assert.equal(recent[2].label, "Lista 5 (de novo)", "repetida: atualiza e sobe");
+    assert.equal(recent[3].id, "p11");
+    await db.exec("set role anon");
+    await fails(db.query("select * from public.npl_recent_sources"), "permission denied");
+    await db.exec("reset role");
   }
 
   // ---------- Instrumentos: partida ----------

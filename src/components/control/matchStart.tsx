@@ -386,7 +386,7 @@ async function runStemsBackground(code: string, token: string, match: number, bg
   let roundNo = 1;
   const queue = [...bg.positions];
   const used = new Set<number>();
-  await api.stemsRequest(code, token, ids).catch(() => 0);
+  await api.stemsRequest(code, token, ids, want).catch(() => 0);
   await api.fillStems(code, token, match, 0, null, { active: true, done, total }).catch(() => {});
   const t0 = Date.now();
   while (queue.length && Date.now() - t0 < STEMS_GIVE_UP_MS) {
@@ -428,6 +428,8 @@ export function useMatchStarter(state: RoomState, code: string, token: string) {
   const begin = async (p: Prepared) => {
     const r = await api.startMatch(code, token, p.tracks, p.rounds);
     if (p.warnings.length) setError(p.warnings.join(" "));
+    // "Fontes recentes": as desta partida vão para o topo dos atalhos
+    void api.sourcesUsed(code, token).catch(() => {});
     // Instrumentos: marca o uso (o cache apaga as usadas há mais tempo) e prepara as que faltam
     if (p.stemsUsed.length) void api.stemsTouch(code, token, p.stemsUsed).catch(() => {});
     if (p.stemsBg) void runStemsBackground(code, token, r.match_no, p.stemsBg);

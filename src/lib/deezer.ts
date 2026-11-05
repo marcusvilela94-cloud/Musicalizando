@@ -3,6 +3,7 @@
 import "server-only";
 import { versesFor } from "./lyrics";
 import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
+import { supabaseServer } from "./supabaseServer";
 import type { ArtistLevel, MusicSource, PickedTrack, TrackMeta } from "./types";
 
 const API = "https://api.deezer.com";
@@ -349,11 +350,74 @@ function toPicked(t: DzTrack): PickedTrack {
     cover: t.album?.cover_big ?? t.album?.cover_medium ?? null,
     album: t.album?.title ?? null,
     album_id: t.album?.id ?? null,
-    artist_id: t.artist?.id ?? null,
+    artist_id: t.artist?.id || null, // 0 = desconhecido (músicas do cache sem o ID)
   };
 }
 
+/** Dados guardados de cada música do cache (npl_stems_cache.meta). */
+type CachedMeta = {
+  title: string;
+  title_short?: string;
+  artist: string;
+  artist_id?: number;
+  album?: string;
+  album_id?: number;
+  cover?: string;
+  duration?: number;
+};
+/** Músicas sem dados (pedidas antes da 022): no máximo tantas consultas ao Deezer por vez. */
+const CACHE_META_LOOKUPS = 60;
+
+/**
+ * Fonte "Músicas já preparadas": todas as músicas do cache dos Instrumentos.
+ * Os dados vêm do banco; as que ainda não têm são buscadas no Deezer e
+ * gravadas (npl_stems_fill_meta), para não consultar de novo.
+ */
+async function getCachedTracks(): Promise<DzTrack[]> {
+  const sb = supabaseServer();
+  const { data, error } = await sb.rpc("npl_stems_cached");
+  if (error) throw new Error(`cache dos instrumentos: ${error.message}`);
+  const rows = ((data ?? []) as { deezer_id: number; meta: CachedMeta | null }[]).map((r) => ({ ...r, deezer_id: Number(r.deezer_id) }));
+  const missing = rows.filter((r) => !r.meta).slice(0, CACHE_META_LOOKUPS);
+  if (missing.length) {
+    const found: (PickedTrack & { duration?: number })[] = [];
+    for (let i = 0; i < missing.length; i += 6) {
+      const got = await Promise.all(missing.slice(i, i + 6).map((r) => dz<DzTrack>(`/track/${r.deezer_id}`).catch(() => null)));
+      for (const t of got) if (t?.id) found.push({ ...toPicked(t), duration: t.duration });
+    }
+    const byId = new Map(found.map((t) => [t.deezer_id, t]));
+    for (const r of missing) {
+      const t = byId.get(r.deezer_id);
+      if (t)
+        r.meta = {
+          title: t.title,
+          title_short: t.title_short,
+          artist: t.artist,
+          artist_id: t.artist_id ?? undefined,
+          album: t.album ?? undefined,
+          album_id: t.album_id ?? undefined,
+          cover: t.cover ?? undefined,
+          duration: t.duration,
+        };
+    }
+    if (found.length) await sb.rpc("npl_stems_fill_meta", { p_tracks: found });
+  }
+  return rows
+    .filter((r): r is { deezer_id: number; meta: CachedMeta } => !!r.meta)
+    .map((r) => ({
+      id: r.deezer_id,
+      readable: true,
+      title: r.meta.title,
+      title_short: r.meta.title_short ?? r.meta.title,
+      duration: r.meta.duration,
+      preview: "cache", // o jogo busca a prévia atualizada na hora de tocar
+      artist: { id: r.meta.artist_id ?? 0, name: r.meta.artist },
+      album: { id: r.meta.album_id, title: r.meta.album, cover_big: r.meta.cover },
+    }));
+}
+
 async function loadSource(src: MusicSource): Promise<SourcePool> {
+  if (src.type === "cache") return { tracks: await getCachedTracks(), head: Infinity };
   if (src.type === "preset") {
     const preset = PRESETS[src.id];
     if (!preset) throw new Error(`Playlist pronta desconhecida: ${src.id}`);

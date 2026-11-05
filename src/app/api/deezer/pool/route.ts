@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "JSON inválido" }, { status: 400 });
   }
   const sources = (Array.isArray(body.sources) ? body.sources : [])
-    .filter((s) => s && ["preset", "playlist", "artist"].includes(s.type) && /^[\w-]+$/.test(String(s.id)))
+    .filter((s) => s && ["preset", "playlist", "artist", "cache"].includes(s.type) && /^[\w-]+$/.test(String(s.id)))
     .slice(0, 12);
   if (sources.length === 0) return Response.json({ error: "Escolha pelo menos uma fonte de músicas" }, { status: 400 });
   try {
