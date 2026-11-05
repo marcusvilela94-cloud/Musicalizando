@@ -6,6 +6,8 @@ import { prepareContinue, type SyncEntry } from "@/lib/sync";
 // -> serve para "Continuar a letra"? + plano (linhas e tempos).
 // Consulta o cache (npl_sync_cache) antes do Groq; grava a análise nova
 // (só com o token de quem comanda a sala). groq=true quando chamou o Groq
+// Exige uma sala válida (código + token do dono): sem isso, qualquer um
+// gastaria a cota do Groq (GROQ_API_KEY) chamando esta rota.
 // (o cliente espera ~3 s antes da próxima: 20 pedidos/minuto).
 export const maxDuration = 60;
 
@@ -16,13 +18,16 @@ export async function GET(request: Request, ctx: RouteContext<"/api/game/continu
   const code = q.get("code") ?? "";
   const owner = q.get("owner") ?? "";
   const sb = supabaseServer();
+  if (!code || !owner) return Response.json({ ok: false, reason: "sala inválida", groq: false }, { status: 403 });
+  const { data: isOwner } = await sb.rpc("npl_is_owner", { p_code: code, p_owner_token: owner });
+  if (isOwner !== true) return Response.json({ ok: false, reason: "sala inválida", groq: false }, { status: 403 });
   try {
     const t = await getTrack(id);
     if (!t.preview) return Response.json({ ok: false, reason: "sem prévia", groq: false });
     const { data } = await sb.rpc("npl_sync_get", { p_ids: [Number(id)] });
     const cached = (Array.isArray(data) && data[0] ? (data[0] as SyncEntry) : null) ?? null;
     const r = await prepareContinue({ preview: t.preview, titleShort: t.titleShort, artist: t.artist, duration: t.duration }, cached);
-    if (r.entry && code && owner) {
+    if (r.entry) {
       // falha ao gravar o cache não atrapalha a partida
       await sb.rpc("npl_sync_put", { p_code: code, p_owner_token: owner, p_entry: { ...r.entry, deezer_id: Number(id) } });
     }

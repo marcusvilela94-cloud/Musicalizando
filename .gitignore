@@ -48,7 +48,7 @@ next-env.d.ts
 # configuração local do Claude Code (conector do Supabase)
 .mcp.json
 
-# separador de instrumentos (roda no PC): a chave service_role fica SÓ em separador/.env
+# separador de instrumentos: separador/.env tem o SEPARADOR_TOKEN (nunca vai para o Git)
 separador/.env
 separador/.venv/
 separador/__pycache__/

@@ -19,6 +19,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import threading
 import time
@@ -37,8 +38,21 @@ except Exception:
     pass
 
 
+SECRETS: list[str] = []  # valores que nunca podem aparecer nos logs (o SEPARADOR_TOKEN)
+
+
+def redact(msg: object) -> str:
+    """Tira das mensagens o que não deve ir para os logs (públicos no GitHub Actions):
+    a parte assinada dos links (ex.: prévia do Deezer ?hdnea=…) e tokens."""
+    text = re.sub(r"(https?://[^\s?#\"']+)[?#][^\s\"']*", r"\1?…", str(msg))
+    text = re.sub(r"(?i)(bearer\s+)[\w.~+/=-]+", r"\1…", text)
+    for s in SECRETS:
+        text = text.replace(s, "…")
+    return text
+
+
 def log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+    print(f"[{time.strftime('%H:%M:%S')}] {redact(msg)}", flush=True)
 
 
 # ---------------------------------------------------------------------
@@ -65,6 +79,8 @@ def load_env() -> dict[str, str]:
 ENV = load_env()
 URL = ENV.get("JOGO_URL", "").rstrip("/")
 TOKEN = ENV.get("SEPARADOR_TOKEN", "")
+if len(TOKEN) >= 8:
+    SECRETS.append(TOKEN)
 NAME = (ENV.get("SEPARADOR_NOME") or f"PC-{os.environ.get('USERNAME') or os.environ.get('USER') or 'casa'}")[:40]
 LIMIT_MB = float(ENV.get("CACHE_LIMITE_MB", "200"))
 POLL_S = float(ENV.get("INTERVALO_FILA_SEGUNDOS", "5"))
@@ -363,7 +379,7 @@ def main() -> None:
             STATE["done"] += 1
         except Exception as e:
             STATE["errors"] += 1
-            msg = str(e) or e.__class__.__name__
+            msg = redact(str(e) or e.__class__.__name__)  # vai para a fila (aparece no jogo)
             log(f"❌ Erro na faixa {job.get('deezer_id')}: {msg}")
             if os.environ.get("SEPARADOR_DEBUG"):
                 traceback.print_exc()
