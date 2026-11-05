@@ -3,10 +3,25 @@ import { useEffect, useState } from "react";
 import { Button, Card } from "@/components/ui";
 import { api, deezer } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import type { MusicSource, RoomSettings, RoomState } from "@/lib/types";
+import type { ArtistLevel, MusicSource, RoomSettings, RoomState } from "@/lib/types";
 
 const PRESET_SOURCES: MusicSource[] = [{ type: "preset", id: "top_brasil", label: "Top Brasil" }];
 const sameSource = (a: MusicSource, b: MusicSource) => a.type === b.type && a.id === b.id;
+
+/** Popularidade das músicas de cada artista. */
+const LEVELS: [ArtistLevel, string, string][] = [
+  ["hits", "⭐ Sucessos", "entre as 15 mais tocadas"],
+  ["known", "🎧 Conhecidas", "entre as 50 mais tocadas"],
+  ["fan", "🤓 Fã de carteirinha", "todo o catálogo (álbuns e singles)"],
+];
+
+/** "1,2 mi fãs" / "35 mil fãs". */
+const fansLabel = (n: number) =>
+  n >= 1_000_000
+    ? `${(n / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi fãs`
+    : n >= 1000
+      ? `${Math.round(n / 1000)} mil fãs`
+      : `${n} fãs`;
 
 type GameMode = "classic" | "auction" | "lyrics" | "mix";
 const MODE_HINTS: Record<GameMode, string> = {
@@ -48,6 +63,8 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
     update({ sources: [...settings.sources, src] });
   };
   const removeSource = (src: MusicSource) => update({ sources: settings.sources.filter((s) => !sameSource(s, src)) });
+  const setLevel = (src: MusicSource, level: ArtistLevel) =>
+    update({ sources: settings.sources.map((s) => (sameSource(s, src) && s.type === "artist" ? { ...s, level } : s)) });
 
   // "Misturar" = sorteia o modo de cada rodada entre Clássico e Leilão
   const gameMode: GameMode =
@@ -79,7 +96,23 @@ export function SettingsForm({ state, code, token, onDone }: { state: RoomState;
           {settings.sources.map((s) => (
             <span key={`${s.type}:${s.id}`} className="inline-flex items-center gap-2 rounded-full bg-white/15 py-1 pl-4 pr-1 text-lg">
               <span className="text-white/60 text-sm">{s.type === "artist" ? "Artista" : s.type === "preset" ? "Pronta" : "Playlist"}</span>
+              {s.type === "artist" && s.picture && (
+                // eslint-disable-next-line @next/next/no-img-element -- foto do Deezer
+                <img src={s.picture} alt="" className="h-7 w-7 rounded-full" />
+              )}
               {s.label}
+              {s.type === "artist" && (
+                <select
+                  value={s.level ?? "known"}
+                  onChange={(e) => setLevel(s, e.target.value as ArtistLevel)}
+                  title={LEVELS.find(([v]) => v === (s.level ?? "known"))?.[2]}
+                  className="rounded-full bg-white/90 px-2 py-0.5 text-sm text-violet-950 outline-none"
+                >
+                  {LEVELS.map(([v, label, hint]) => (
+                    <option key={v} value={v} title={hint}>{label}</option>
+                  ))}
+                </select>
+              )}
               <button
                 className="h-8 w-8 rounded-full bg-white/10 hover:bg-rose-500"
                 onClick={() => removeSource(s)}
@@ -287,7 +320,7 @@ function PlaylistLinkInput({ onAdd }: { onAdd: (s: MusicSource) => void }) {
 
 function ArtistSearch({ onAdd }: { onAdd: (s: MusicSource) => void }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<{ id: string; name: string; picture: string | null }[]>([]);
+  const [results, setResults] = useState<{ id: string; name: string; picture: string | null; fans: number }[]>([]);
   useEffect(() => {
     if (q.trim().length < 2) return;
     const t = setTimeout(() => {
@@ -311,13 +344,15 @@ function ArtistSearch({ onAdd }: { onAdd: (s: MusicSource) => void }) {
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/15"
               onClick={() => {
-                onAdd({ type: "artist", id: a.id, label: a.name, picture: a.picture });
+                onAdd({ type: "artist", id: a.id, label: a.name, picture: a.picture, level: "known" });
                 setQ("");
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- miniatura do Deezer */}
               {a.picture && <img src={a.picture} alt="" className="h-8 w-8 rounded-full" />}
-              {a.name}
+              <span className="flex-1">{a.name}</span>
+              {/* homônimos: a foto e o nº de fãs ajudam a achar o artista certo */}
+              <span className="text-xs text-white/50">{fansLabel(a.fans)}</span>
             </button>
           </li>
         ))}

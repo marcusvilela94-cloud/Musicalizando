@@ -3,7 +3,7 @@
 import "server-only";
 import { versesFor } from "./lyrics";
 import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
-import type { MusicSource, PickedTrack, TrackMeta } from "./types";
+import type { ArtistLevel, MusicSource, PickedTrack, TrackMeta } from "./types";
 
 const API = "https://api.deezer.com";
 
@@ -101,9 +101,37 @@ async function getPlaylistTracks(id: string, max = 400): Promise<DzTrack[]> {
   return out;
 }
 
-async function getArtistTracks(id: string): Promise<DzTrack[]> {
-  const r = await dz<DzList<DzTrack>>(`/artist/${id}/top?limit=100`);
-  return r.data ?? [];
+/**
+ * Fonte "artista": conjunto de onde as músicas são sorteadas.
+ *  - head = quantas do começo da lista entram no sorteio; o resto fica na ordem
+ *    (só entra se faltar música depois dos filtros: "completa com as seguintes do top").
+ */
+type SourcePool = { tracks: DzTrack[]; head: number };
+
+/** Nível de popularidade: Sucessos = top 15, Conhecidas = top 50, Fã = catálogo inteiro. */
+const LEVEL_HEAD: Record<ArtistLevel, number> = { hits: 15, known: 50, fan: Infinity };
+/** Fã de carteirinha: no máximo 20 álbuns/singles consultados. */
+const FAN_MAX_ALBUMS = 20;
+
+type DzAlbumItem = { id: number; title?: string; record_type?: string; cover_medium?: string; cover_big?: string };
+
+async function getArtistTracks(id: string, level: ArtistLevel): Promise<SourcePool> {
+  if (level !== "fan") {
+    // top 100 em ordem de popularidade: sorteia entre as N primeiras, as demais completam
+    const r = await dz<DzList<DzTrack>>(`/artist/${id}/top?limit=100`);
+    return { tracks: r.data ?? [], head: LEVEL_HEAD[level] };
+  }
+  // catálogo: álbuns, singles e EPs do artista (sem coletâneas), até 20, sorteados
+  const list = await dz<DzList<DzAlbumItem>>(`/artist/${id}/albums?limit=100`);
+  const albums = shuffle((list.data ?? []).filter((a) => a.record_type !== "compile")).slice(0, FAN_MAX_ALBUMS);
+  const perAlbum = await Promise.all(
+    albums.map(async (a) => {
+      const t = await dz<DzList<DzTrack>>(`/album/${a.id}/tracks?limit=100`).catch(() => ({ data: [] }) as DzList<DzTrack>);
+      // as faixas do álbum não trazem o álbum: completa (capa, título, id)
+      return (t.data ?? []).map((x) => ({ ...x, album: { id: a.id, title: a.title, cover_medium: a.cover_medium, cover_big: a.cover_big } }));
+    }),
+  );
+  return { tracks: perAlbum.flat(), head: Infinity };
 }
 
 export async function getTrack(id: string) {
@@ -320,14 +348,17 @@ function toPicked(t: DzTrack): PickedTrack {
   };
 }
 
-async function loadSource(src: MusicSource): Promise<DzTrack[]> {
+async function loadSource(src: MusicSource): Promise<SourcePool> {
   if (src.type === "preset") {
     const preset = PRESETS[src.id];
     if (!preset) throw new Error(`Playlist pronta desconhecida: ${src.id}`);
-    return getPlaylistTracks(preset.playlistId);
+    return { tracks: await getPlaylistTracks(preset.playlistId), head: Infinity };
   }
-  if (src.type === "playlist") return getPlaylistTracks(src.id);
-  if (src.type === "artist") return getArtistTracks(src.id);
+  if (src.type === "playlist") return { tracks: await getPlaylistTracks(src.id), head: Infinity };
+  if (src.type === "artist") {
+    const level: ArtistLevel = src.level === "hits" || src.level === "fan" ? src.level : "known";
+    return getArtistTracks(src.id, level);
+  }
   throw new Error("Fonte desconhecida");
 }
 
@@ -352,7 +383,9 @@ export async function buildTrackList(sources: MusicSource[], count: number, vers
   const results = await Promise.allSettled(sources.map(loadSource));
   results.forEach((r, i) => {
     if (r.status === "fulfilled") {
-      pools.push(shuffle(r.value.filter((t) => t.preview && t.readable !== false && !(versionFilter && isOtherVersion(t)))));
+      // filtros primeiro; depois sorteia entre as "head" primeiras e deixa o resto (em ordem) para completar
+      const ok = r.value.tracks.filter((t) => t.preview && t.readable !== false && !(versionFilter && isOtherVersion(t)));
+      pools.push([...shuffle(ok.slice(0, r.value.head)), ...ok.slice(r.value.head)]);
     } else warnings.push(`Não consegui carregar "${sources[i].label}": ${(r.reason as Error).message}`);
   });
 

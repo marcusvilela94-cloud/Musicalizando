@@ -3,7 +3,10 @@
 export type MusicSource =
   | { type: "preset"; id: string; label: string }
   | { type: "playlist"; id: string; label: string; picture?: string | null; nbTracks?: number }
-  | { type: "artist"; id: string; label: string; picture?: string | null };
+  | { type: "artist"; id: string; label: string; picture?: string | null; level?: ArtistLevel };
+
+/** Popularidade das músicas de um artista: top 15 | top 50 (padrão) | catálogo inteiro. */
+export type ArtistLevel = "hits" | "known" | "fan";
 
 export type Scoring = "artist_title" | "title"; // "Artista e música" | "Só a música"
 export type AnswerMode = "spoken" | "typed"; // "Falada" | "Digitada"
