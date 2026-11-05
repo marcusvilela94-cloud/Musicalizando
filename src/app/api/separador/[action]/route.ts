@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { adminRpc, removeStemFiles, separadorDenied, uploadStemFile } from "@/lib/bibliotecaServer";
-import { cloudConfigured, wakeCloudSeparator } from "@/lib/hfSpace";
+import { cloudConfigured, wakeCloudSeparator } from "@/lib/cloudSeparator";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 // Rotas dos separadores (PC e Hugging Face). Só elas usam a service_role.

@@ -56,7 +56,7 @@ def load_env() -> dict[str, str]:
             env[k.strip()] = v.strip().strip('"').strip("'")
     # variáveis de ambiente valem mais que o arquivo (ex.: num servidor, sem .env)
     for k in ("JOGO_URL", "SEPARADOR_TOKEN", "SEPARADOR_NOME", "CACHE_LIMITE_MB", "INTERVALO_FILA_SEGUNDOS",
-              "LIMIAR_SILENCIO_DB", "MP3_KBPS", "PORT", *env):
+              "LIMIAR_SILENCIO_DB", "MP3_KBPS", "PORT", "SAIR_OCIOSO_MIN", "MAX_MINUTOS", *env):
         if os.environ.get(k):
             env[k] = os.environ[k]
     return env
@@ -72,6 +72,9 @@ SILENCE_DB = float(ENV.get("LIMIAR_SILENCIO_DB", "-16"))  # abaixo da mistura: "
 FLOOR_DB = -50.0  # abaixo disso é silêncio em qualquer música
 BITRATE = int(ENV.get("MP3_KBPS", "64"))
 PORT = int(ENV.get("PORT", "0") or 0)  # > 0: responde em HTTP (o Hugging Face Space precisa)
+# Na nuvem (GitHub Actions): sai sozinho depois de N min com a fila vazia / depois de N min ligado
+IDLE_EXIT_MIN = float(ENV.get("SAIR_OCIOSO_MIN", "0") or 0)
+MAX_MIN = float(ENV.get("MAX_MINUTOS", "0") or 0)
 
 if not URL or not TOKEN or "COLE" in TOKEN:
     log("❌ Falta configurar o separador/.env (JOGO_URL e SEPARADOR_TOKEN).")
@@ -327,7 +330,11 @@ def main() -> None:
     log(f"👀 Olhando a fila a cada {POLL_S:.0f}s. Deixe esta janela aberta (Ctrl+C para sair).")
 
     idle_logged: str | bool = False
+    idle_since = time.time()
     while True:
+        if MAX_MIN and time.time() - STATE["since"] > MAX_MIN * 60:
+            log(f"⏹️  {MAX_MIN:.0f} min ligado: saindo (o jogo liga outro se ainda houver pedidos).")
+            return
         try:
             job = (api("claim", {"worker": NAME}) or {}).get("job")
         except Exception as e:
@@ -344,6 +351,9 @@ def main() -> None:
                      "vazia": "💤 Fila vazia. Esperando pedidos…"}[why])
                 idle_logged = why
             STATE["status"], STATE["current"] = ("pausado" if paused else "aguardando"), None
+            if IDLE_EXIT_MIN and time.time() - idle_since > IDLE_EXIT_MIN * 60:
+                log(f"👋 {IDLE_EXIT_MIN:.0f} min sem pedidos: desligando.")
+                return
             time.sleep(POLL_S)
             continue
         idle_logged: str | bool = False
@@ -363,6 +373,7 @@ def main() -> None:
                 log(f"⚠️  Não consegui marcar o erro na fila: {e2}")
         finally:
             STATE["current"] = None
+            idle_since = time.time()
 
 
 if __name__ == "__main__":

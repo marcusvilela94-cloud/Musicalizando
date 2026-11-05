@@ -1,0 +1,53 @@
+# Separador da nuvem do Musicalizando (modo Instrumentos).
+# O jogo dispara este workflow (POST .../dispatches) quando alguém pede para preparar
+# e nenhum separador está ligado. Ele roda o mesmo separador/separador.py do PC, com o
+# nome "Nuvem", pega pedidos pelas rotas do jogo e desliga sozinho após 5 min sem pedidos.
+# Segredos do repositório: JOGO_URL e SEPARADOR_TOKEN.
+name: Separador (nuvem)
+
+on:
+  workflow_dispatch:
+
+# um por vez (um segundo pedido espera; ele sai logo se a fila estiver vazia)
+concurrency:
+  group: separador-nuvem
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  separar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: separador
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: separador/requirements.txt
+
+      - name: Modelo em cache (htdemucs_6s)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/torch
+          key: demucs-htdemucs_6s-v1
+
+      - name: Instalar PyTorch (CPU) e Demucs
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r separador/requirements.txt
+          pip install --no-deps "demucs>=4.0.1"
+
+      - name: Separar
+        env:
+          JOGO_URL: ${{ secrets.JOGO_URL }}
+          SEPARADOR_TOKEN: ${{ secrets.SEPARADOR_TOKEN }}
+          SEPARADOR_NOME: Nuvem
+          SAIR_OCIOSO_MIN: "5"
+          MAX_MINUTOS: "300"
+        run: python separador/separador.py

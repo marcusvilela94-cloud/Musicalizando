@@ -265,7 +265,7 @@ export const deezer = {
     }),
   /** Instrumentos: acorda o separador da nuvem (Hugging Face) se nenhum estiver ligado. */
   wakeSeparator: (code: string, owner: string) =>
-    getJson<{ configured: boolean; woke: boolean; stage?: string | null; action?: string }>("/api/separador/wake", {
+    getJson<{ configured: boolean; woke: boolean; provider?: string | null; action?: string }>("/api/separador/wake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, owner }),
