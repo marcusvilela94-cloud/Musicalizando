@@ -8,7 +8,8 @@ import type { LibraryData } from "@/lib/types";
 //   GET  -> músicas, coleções, bloqueadas e espaço usado
 //   POST { action, ... } -> remove | block | unblock | pin | unpin |
 //        collection_add | collection_remove | collection_create |
-//        collection_rename | collection_delete | limit
+//        collection_rename | collection_delete | limit |
+//        queue_pause | queue_resume | queue_clear
 
 const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +29,7 @@ const fail = (e: unknown, status = 502) => {
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const denied = bibliotecaDenied(request);
+  const denied = await bibliotecaDenied(request).catch((e) => fail(e));
   if (denied) return denied;
   try {
     // arquivos de músicas bloqueadas que terminaram de separar depois
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
 type Body = { action?: string; ids?: unknown; collection?: unknown; name?: unknown; mb?: unknown };
 
 export async function POST(request: Request) {
-  const denied = bibliotecaDenied(request);
+  const denied = await bibliotecaDenied(request).catch((e) => fail(e));
   if (denied) return denied;
   let body: Body;
   try {
@@ -110,6 +111,15 @@ export async function POST(request: Request) {
       case "collection_delete":
         needCollection();
         return Response.json({ ok: true, deleted: await adminRpc<boolean>("npl_lib_collection_delete", { p_id: collection }) }, { headers: NO_STORE });
+      // fila do separador (vale para todas as salas)
+      case "queue_pause":
+      case "queue_resume":
+        return Response.json(
+          { ok: true, paused: await adminRpc<boolean>("npl_lib_queue_pause", { p_paused: body.action === "queue_pause" }) },
+          { headers: NO_STORE },
+        );
+      case "queue_clear":
+        return Response.json({ ok: true, n: await adminRpc<number>("npl_lib_queue_clear") }, { headers: NO_STORE });
       case "limit": {
         const mb = Math.round(Number(body.mb));
         if (!Number.isFinite(mb) || mb < 20 || mb > 500) throw new Error("O limite vai de 20 a 500 MB");

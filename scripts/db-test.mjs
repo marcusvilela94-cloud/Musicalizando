@@ -1311,8 +1311,15 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     // pausar / continuar / limpar a fila
     assert.equal(await rpc("npl_stems_request", sc0, OWNER, [501, 502, 503]), 3);
     assert.equal((await rpc("npl_stems_claim")).deezer_id, 501, "a atual");
-    await fails(rpc("npl_stems_set_paused", sc0, "token-errado", true), "");
-    assert.equal(await rpc("npl_stems_set_paused", sc0, OWNER, true), true);
+    // pausar/limpar valem para todas as salas: só pela biblioteca (service_role), nunca pelo anon
+    await db.exec("set role anon");
+    await fails(db.query("select public.npl_lib_queue_pause(true)"), "permission denied");
+    await fails(db.query("select public.npl_lib_queue_clear()"), "permission denied");
+    await fails(db.query("select public.npl_stems_fill_meta('[]'::jsonb)"), "permission denied");
+    await fails(db.query("select public.npl_lib_auth_result('abcdef0123456789', true)"), "permission denied");
+    await db.exec("reset role");
+    assert.equal((await sql("select count(*)::int as n from pg_proc where proname in ('npl_stems_set_paused', 'npl_stems_clear')"))[0].n, 0, "as antigas saíram");
+    assert.equal(await rpc("npl_lib_queue_pause", true), true);
     st = await rpc("npl_stems_status", []);
     assert.equal(st.global.paused, true);
     assert.equal(st.global.pending, 2);
@@ -1323,9 +1330,9 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     await rpc("npl_stems_done", 501, "key-501", paths("key-501"), 1000, { drums: true, bass: true, guitar: true, vocals: true }, {});
     st = await rpc("npl_stems_status", []);
     assert.ok(st.global.avg_seconds >= 39 && st.global.avg_seconds <= 41, "tempo médio por música");
-    assert.equal(await rpc("npl_stems_set_paused", sc0, OWNER, false), false);
+    assert.equal(await rpc("npl_lib_queue_pause", false), false);
     assert.equal((await rpc("npl_stems_claim")).deezer_id, 502, "continuou");
-    assert.equal(await rpc("npl_stems_clear", sc0, OWNER), 1, "limpa só a pendente");
+    assert.equal(await rpc("npl_lib_queue_clear"), 1, "limpa só a pendente");
     st = await rpc("npl_stems_status", [501, 502, 503]);
     assert.deepEqual(st.queue, { processing: 1 }, "a que está sendo separada fica");
     assert.equal(st.ready.length, 1, "o cache fica");
@@ -1511,6 +1518,26 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     await fails(db.query("select * from public.npl_stems_workers"), "permission denied");
     await db.exec("reset role");
     await db.exec("delete from npl_stems_cache; delete from npl_stems_queue; delete from npl_stems_workers");
+
+    // ---------- senha da biblioteca: 5 erros em 15 min bloqueiam por 15 min ----------
+    const ip = "0123456789abcdef0123456789abcdef";
+    for (let i = 1; i <= 4; i++) assert.equal(await rpc("npl_lib_auth_result", ip, false), 0, `erro ${i}: ainda pode`);
+    assert.equal(await rpc("npl_lib_auth_blocked", ip), 0);
+    assert.equal(await rpc("npl_lib_auth_result", ip, false), 900, "5º erro: bloqueia");
+    const left = await rpc("npl_lib_auth_blocked", ip);
+    assert.ok(left > 890 && left <= 900, "15 min de bloqueio");
+    assert.equal(await rpc("npl_lib_auth_blocked", "ffffffffffffffff"), 0, "outro endereço não é afetado");
+    await db.query("update npl_lib_auth set blocked_until = now() - interval '1 second' where key = $1", [ip]);
+    assert.equal(await rpc("npl_lib_auth_blocked", ip), 0, "passou o bloqueio");
+    await rpc("npl_lib_auth_result", ip, false);
+    await rpc("npl_lib_auth_result", ip, true);
+    assert.equal((await sql("select count(*)::int as n from npl_lib_auth where key = $1", [ip]))[0].n, 0, "acertou: zera");
+    // erros espaçados (janela de 15 min) não acumulam
+    for (let i = 0; i < 4; i++) await rpc("npl_lib_auth_result", ip, false);
+    await db.query("update npl_lib_auth set first_at = now() - interval '16 minutes' where key = $1", [ip]);
+    assert.equal(await rpc("npl_lib_auth_result", ip, false), 0, "janela nova");
+    assert.equal(await rpc("npl_lib_auth_result", "nao-hex!", false), 0, "chave inválida é ignorada");
+    await db.exec("delete from npl_lib_auth");
 
     // partidas maiores: até 100 músicas
     await rpc("npl_update_settings", sc0, OWNER, { rounds: 100 });

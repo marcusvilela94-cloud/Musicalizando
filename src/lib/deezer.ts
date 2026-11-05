@@ -3,6 +3,7 @@
 import "server-only";
 import { versesFor } from "./lyrics";
 import { mbYear, recordingsByIsrc, searchRecordings } from "./musicbrainz";
+import { adminRpc } from "./bibliotecaServer";
 import { supabaseServer } from "./supabaseServer";
 import type { ArtistLevel, MusicSource, PickedTrack, SourceRef, TrackMeta } from "./types";
 
@@ -400,7 +401,6 @@ async function getCachedTracks(collection?: string): Promise<DzTrack[]> {
  * Usado pela fonte do cache e pela biblioteca.
  */
 export async function completeCacheMeta(rows: { deezer_id: number; meta: CachedMeta | null }[]) {
-  const sb = supabaseServer();
   const missing = rows.filter((r) => !r.meta).slice(0, CACHE_META_LOOKUPS);
   if (missing.length) {
     const found: (PickedTrack & { duration?: number })[] = [];
@@ -423,7 +423,9 @@ export async function completeCacheMeta(rows: { deezer_id: number; meta: CachedM
           duration: t.duration,
         };
     }
-    if (found.length) await sb.rpc("npl_stems_fill_meta", { p_tracks: found });
+    // só o servidor grava (service_role): a chave pública não chama mais npl_stems_fill_meta
+    if (found.length && process.env.SUPABASE_SERVICE_ROLE_KEY)
+      await adminRpc("npl_stems_fill_meta", { p_tracks: found }).catch(() => {});
   }
 }
 

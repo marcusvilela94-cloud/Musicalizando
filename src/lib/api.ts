@@ -128,10 +128,7 @@ export const api = {
   stemsCollections: () => call<{ id: string; name: string; songs: number }[]>("npl_stems_collections_list", {}, false),
   /** Começou a partida: as fontes da sala viram as mais recentes. */
   sourcesUsed: (code: string, owner: string) => call<void>("npl_sources_used", { p_code: code, p_owner_token: owner }, false),
-  stemsSetPaused: (code: string, owner: string, paused: boolean) =>
-    call<boolean>("npl_stems_set_paused", { p_code: code, p_owner_token: owner, p_paused: paused }, false),
   /** Tira da fila os pedidos que ainda não começaram (a atual e o cache ficam). */
-  stemsClear: (code: string, owner: string) => call<number>("npl_stems_clear", { p_code: code, p_owner_token: owner }, false),
   stemsTouch: (code: string, owner: string, ids: number[]) =>
     call<void>("npl_stems_touch", { p_code: code, p_owner_token: owner, p_ids: ids }, false),
   fillStems: (code: string, owner: string, match: number, position: number, track: PickedTrack | null, prep: { active: boolean; done: number; total: number } | null) =>
@@ -231,6 +228,30 @@ export const api = {
       p_title: title,
     }),
 };
+
+// ---- Biblioteca (rotas do servidor protegidas pela senha da biblioteca) ----
+/** Mesma chave da página /biblioteca: a senha digitada lá vale aqui (e vice-versa). */
+export const LIBRARY_PWD_KEY = "npl_biblioteca_pwd";
+export class LibraryAuthError extends Error {}
+
+/** Pausar / continuar / limpar a fila do separador (vale para todas as salas: exige a senha). */
+export async function libraryQueue(action: "queue_pause" | "queue_resume" | "queue_clear", password?: string) {
+  const pwd = password ?? (typeof localStorage !== "undefined" ? localStorage.getItem(LIBRARY_PWD_KEY) : null);
+  if (!pwd) throw new LibraryAuthError("Digite a senha da biblioteca");
+  const res = await fetch("/api/biblioteca", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-biblioteca-password": pwd },
+    body: JSON.stringify({ action }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string; paused?: boolean; n?: number };
+  if (res.status === 401) {
+    localStorage.removeItem(LIBRARY_PWD_KEY);
+    throw new LibraryAuthError(json.error ?? "Senha errada");
+  }
+  if (!res.ok) throw new Error(json.error ?? `Erro ${res.status}`);
+  if (password) localStorage.setItem(LIBRARY_PWD_KEY, password);
+  return json;
+}
 
 // ---- Deezer (via rotas do Next) ----
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {

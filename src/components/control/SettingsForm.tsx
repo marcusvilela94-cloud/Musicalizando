@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Card } from "@/components/ui";
-import { api, deezer } from "@/lib/api";
+import { LibraryAuthError, api, deezer, libraryQueue } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { OBRA_PACKS, obraPacksOf, pickObraTracks } from "@/lib/obra";
 import type { ArtistLevel, ModeId, MusicSource, ObraPackId, PickedTrack, RoomSettings, RoomState, SfxVolume, StemName, StemsStatus } from "@/lib/types";
@@ -598,17 +598,31 @@ function StemsPanel({
       setBusy(false);
     }
   };
-  const togglePause = () =>
-    control(async () =>
-      (await api.stemsSetPaused(code, token, !paused))
-        ? "Fila pausada: o separador termina a música atual e espera."
-        : "Fila continuando.",
-    );
-  const clearQueue = () =>
+  // valem para todas as salas: pedem a senha da biblioteca (a guardada neste navegador, se houver)
+  type QueueAction = "queue_pause" | "queue_resume" | "queue_clear";
+  const [askPwd, setAskPwd] = useState<QueueAction | null>(null);
+  const [pwd, setPwd] = useState("");
+  const queueAction = (action: QueueAction, password?: string) =>
     control(async () => {
-      const n = await api.stemsClear(code, token);
-      return n ? `${n} pedido${n === 1 ? "" : "s"} removido${n === 1 ? "" : "s"} da fila.` : "Não havia pedidos esperando.";
+      try {
+        const r = await libraryQueue(action, password);
+        setAskPwd(null);
+        setPwd("");
+        if (action === "queue_clear") {
+          const n = r.n ?? 0;
+          return n ? `${n} pedido${n === 1 ? "" : "s"} removido${n === 1 ? "" : "s"} da fila.` : "Não havia pedidos esperando.";
+        }
+        return r.paused ? "Fila pausada: os separadores terminam a música atual e esperam." : "Fila continuando.";
+      } catch (e) {
+        if (e instanceof LibraryAuthError) {
+          setAskPwd(action);
+          return password ? `🔒 ${e.message}` : "🔒 Pausar e limpar a fila valem para todas as salas: digite a senha da biblioteca.";
+        }
+        throw e;
+      }
     });
+  const togglePause = () => queueAction(paused ? "queue_resume" : "queue_pause");
+  const clearQueue = () => queueAction("queue_clear");
 
   const prepare = async () => {
     if (!ids) return;
@@ -713,6 +727,26 @@ function StemsPanel({
               🧹 Limpar fila
             </Button>
             {msg && <span className="text-sm text-white/80">{msg}</span>}
+            {askPwd && (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (pwd) void queueAction(askPwd, pwd);
+                }}
+              >
+                <input
+                  type="password"
+                  autoFocus
+                  value={pwd}
+                  onChange={(e) => setPwd(e.target.value)}
+                  placeholder="Senha da biblioteca"
+                  className="w-44 rounded-xl bg-white/90 px-3 py-1.5 text-violet-950 outline-none"
+                />
+                <Button type="submit" variant="secondary" className="px-3 py-1.5" disabled={busy || !pwd}>OK</Button>
+                <Button type="button" variant="ghost" className="px-2 py-1.5" onClick={() => setAskPwd(null)}>✕</Button>
+              </form>
+            )}
           </div>
           {queued > 0 && (
             <p className="text-sm text-white/80">
