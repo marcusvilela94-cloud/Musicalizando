@@ -42,7 +42,8 @@ export function QuizQuestion({ round, now, size = "tv" }: { round: Round; now: n
   const q = quizOf(round);
   if (!q) return null;
   const tv = size === "tv";
-  const started = round.mode === "quiz_choice" ? q.starts_at : round.stage_started_at;
+  // a capa só começa a ficar nítida no "Valendo!"
+  const started = !q.live ? null : round.mode === "quiz_choice" ? q.starts_at : round.stage_started_at;
   return (
     <div className={`flex w-full flex-col items-center ${tv ? "max-w-6xl gap-5" : "gap-2"}`}>
       <span className={`rounded-full bg-white/10 px-4 py-1 font-display ${tv ? "text-2xl" : "text-sm"}`}>{QUIZ_KIND_LABEL[q.kind] ?? "❓ Pergunta"}</span>
@@ -116,6 +117,16 @@ export function QuizChoiceTv({ state, round, now }: TvRoundViewProps) {
   }, [end, paused, state.room.code]);
 
   if (!q) return null;
+  if (!q.live) {
+    // "Mostrar pergunta": todos leem com calma; nada corre até o "Valendo!"
+    return (
+      <div className="flex w-full flex-col items-center gap-6">
+        <QuizQuestion round={round} now={now} />
+        <OptionGrid q={q} tv />
+        <p className="npl-pop font-display text-4xl text-yellow-300">📖 Leiam com calma… o tempo começa no “Valendo!”</p>
+      </div>
+    );
+  }
   const before = now < start;
   const answered = new Set(q.answered ?? []);
   const left = Math.max(0, end - now);
@@ -190,6 +201,16 @@ export function QuizChoicePhone({ ctx, round, now, onFeedback }: PhoneRoundViewP
     }
   };
 
+  if (!q.live) {
+    return (
+      <div className="flex w-full max-w-sm flex-col items-center gap-3">
+        <p className="font-display text-3xl">👀 Leiam a pergunta</p>
+        <QuizPhoneQuestion round={round} now={now} />
+        <OptionGrid q={q} tv={false} />
+        <p className="font-display text-xl text-yellow-300">Os botões liberam no “Valendo!”</p>
+      </div>
+    );
+  }
   if (now < start) {
     return (
       <>

@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const recent = (Array.isArray(body.recent) ? body.recent : []).filter((x) => typeof x === "string").slice(0, 80);
   if (!items.length) return Response.json({ results: [] });
   try {
-    return Response.json(await buildQuiz({ items, pool, sources, curiosities: body.curiosities !== false, recent }));
+    return Response.json(await buildQuiz({ items, pool, sources, curiosities: body.curiosities !== false, recent, versionFilter: body.versionFilter !== false }));
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });
   }

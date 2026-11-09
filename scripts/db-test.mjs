@@ -26,10 +26,21 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
   await db.exec(readFileSync(join(dir, f), "utf8"));
 }
 
-const rpc = async (fn, ...args) => {
+const rpc0 = async (fn, ...args) => {
   const ph = args.map((_, i) => `$${i + 1}`).join(", ");
   const r = await db.query(`select public.${fn}(${ph}) as v`, args);
   return r.rows[0].v;
+};
+// A rodada para na tela de apresentação até o "Começar rodada" (npl_round_go);
+// nos cenários antigos o controlador aperta na hora (e "Valendo!" nos quizzes).
+const rpc = async (fn, ...args) => {
+  const v = await rpc0(fn, ...args);
+  if (fn === "npl_round_begin") {
+    const [code, owner, roundId] = args;
+    await rpc0("npl_round_go", code, owner, roundId);
+    await rpc0("npl_quiz_go", code, owner, roundId);
+  }
+  return v;
 };
 const fails = async (p, msg) => {
   try {
@@ -514,7 +525,7 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   const bid = (tok, secs) => rpc("npl_auction_bid", c4, tok, R4, secs);
   const startNow = async () =>
     db.query(`update npl_rounds set auction = auction || jsonb_build_object('starts_at', clock_timestamp() - interval '60 seconds') where id = $1`, [R4]);
-  assert.equal((await bid(pa, 15)).reason, "not_started", "dica aparece antes dos lances");
+  // a dica aparece na apresentação da rodada; os lances começam no "Começar rodada"
   await startNow();
   assert.equal((await rpc("npl_buzz", c4, pa, R4)).reason, "auction");
   assert.equal((await rpc("npl_play", c4, OWNER, R4, 1, false)).ok, false, "sem trechos do clássico");
@@ -990,6 +1001,9 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   assert.ok(!JSON.stringify(sc).includes("prometido"), "linha escondida não vaza");
   // tocar e erro: bloqueio aguarda a música voltar
   assert.equal((await rpc("npl_play", cc, OWNER, rc.id, 1, false)).ok, true);
+  assert.equal((await rpc("npl_buzz", cc, P(70), rc.id)).reason, "music", "EU SEI! só depois que a música para");
+  const musicEnded = (id) => db.query("update npl_rounds set play_at = play_at - interval '60 seconds' where id = $1", [id]);
+  await musicEnded(rc.id);
   let bc = await rpc("npl_buzz", cc, P(70), rc.id);
   assert.equal((await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "o que foi prometido")).result, "almost", "quase");
   await rpc("npl_submit_answer", cc, P(70), bc.attempt_id, "", "nada a ver com nada");
@@ -1000,6 +1014,8 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   const again = await rpc("npl_play", cc, OWNER, rc.id, 1, false); // repetir
   assert.equal(again.ok, true);
   assert.ok(again.round.locks[CA].until, "contagem começou ao tocar de novo");
+  assert.equal((await rpc("npl_buzz", cc, P(71), rc.id)).reason, "music", "Repetir: desabilita até parar de novo");
+  await musicEnded(rc.id);
   bc = await rpc("npl_buzz", cc, P(71), rc.id);
   const rr = await rpc("npl_submit_answer", cc, P(71), bc.attempt_id, "", "e o que foi prometido ninguem prometeu");
   assert.equal(rr.result, "correct", "só a linha vale (mesmo com 'Artista e música')");
@@ -1086,13 +1102,27 @@ await rpc("npl_start_match", code3, OWNER, tracks);
   let { s: qs, r: qr } = await cur(qc);
   assert.equal(qr.mode, "quiz_choice");
   assert.deepEqual(qs.room.trivia_recent, ["c80-01"], "curiosidade usada fica nas recentes");
-  await rpc("npl_round_begin", qc, OWNER, qr.id, [], [], {});
+  await rpc0("npl_round_begin", qc, OWNER, qr.id, [], [], {});
   ({ r: qr } = await cur(qc));
+  assert.equal(qr.status, "intro", "apresentação da rodada");
+  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).reason, "closed", "nada antes do Começar rodada");
+  assert.equal((await rpc0("npl_quiz_go", qc, OWNER, qr.id)).ok, false, "Valendo! só com a pergunta na tela");
+  await fails(rpc0("npl_round_go", qc, P(90), qr.id), "not_owner");
+  assert.equal((await rpc0("npl_round_go", qc, OWNER, qr.id)).ok, true);
+  ({ r: qr } = await cur(qc));
+  assert.equal(qr.status, "playing");
   assert.equal(qr.quiz.options.length, 4);
   assert.equal(qr.quiz.correct, undefined, "a certa não aparece antes");
   assert.equal(qr.quiz.answer, undefined);
-  assert.equal(qr.play_seq, 1, "a prévia toca sozinha");
-  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).reason, "early", "3 s para ler a pergunta");
+  assert.equal(qr.quiz.starts_at, undefined, "pergunta na tela, sem tempo correndo");
+  assert.equal(qr.play_seq, 0, "sem música enquanto leem");
+  assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).reason, "closed", "botões só no Valendo!");
+  assert.equal((await rpc0("npl_quiz_go", qc, OWNER, qr.id)).ok, true);
+  ({ r: qr } = await cur(qc));
+  assert.equal(qr.quiz.live, true);
+  assert.equal(qr.play_seq, 1, "Valendo!: a prévia toca");
+  assert.ok(qr.quiz.deadline, "Valendo!: o prazo começa");
+  assert.equal((await rpc0("npl_quiz_go", qc, OWNER, qr.id)).ok, false, "uma vez só");
   assert.equal((await rpc("npl_buzz", qc, P(90), qr.id)).reason, "choice");
   await db.query("update npl_rounds set quiz = quiz || jsonb_build_object('starts_at', now() - interval '0.1 seconds', 'deadline', now() + interval '15 seconds') where id = $1", [qr.id]);
   assert.equal((await rpc("npl_quiz_choose", qc, P(90), qr.id, 1)).ok, true);
@@ -1621,56 +1651,161 @@ await rpc("npl_start_match", code3, OWNER, tracks);
     const r = s.rounds.find((x) => x.round_no === s.room.round_no);
     return { s, r, a: s.attempts.find((x) => x.id === r.current_attempt_id) };
   };
+  const expire = async (id) => {
+    await db.query("update npl_attempts set deadline = now() - interval '5 seconds' where id = $1", [id]);
+    assert.equal(await rpc("npl_tick", tc), true);
+  };
   let { r: tr } = await cur();
-  await rpc("npl_round_begin", tc, OWNER, tr.id, [], [0, 0, 0, 0, 0, 0]);
+  await rpc0("npl_round_begin", tc, OWNER, tr.id, [], [0, 0, 0, 0, 0, 0]);
   let { r, a } = await cur();
-  assert.equal(r.status, "answering", "a rodada já abre com a vez do time");
-  assert.equal(r.turn.team, tt[0]);
-  assert.equal(a.team_id, tt[0]);
-  assert.equal(a.deadline, null, "o prazo só começa quando o trecho toca");
+  // apresentação: nada começa até o "Começar rodada"
+  assert.equal(r.status, "intro");
+  assert.equal(r.turn.team, tt[0], "a apresentação já mostra de quem é a vez");
+  assert.equal(r.current_attempt_id, null);
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, false)).ok, false, "nada toca na apresentação");
+  assert.equal((await rpc("npl_turn_claim", tc, P(95), r.id)).reason, "closed");
+  await rpc0("npl_round_go", tc, OWNER, r.id);
+  ({ r, a } = await cur());
+  assert.equal(r.status, "playing", "o time da vez não responde de imediato");
+  assert.equal(a, undefined);
   assert.equal((await rpc("npl_buzz", tc, P(96), r.id)).reason, "turns");
-  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, false)).ok, true, "Tocar com a vez aberta");
+  assert.equal((await rpc("npl_turn_claim", tc, P(95), r.id)).reason, "not_played", "primeiro ouve um trecho");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, false)).ok, true, "Tocar");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, true)).ok, true, "Próximo trecho");
+  assert.equal((await rpc("npl_turn_claim", tc, P(96), r.id)).reason, "turns", "só o time da vez");
+  const cl = await rpc("npl_turn_claim", tc, P(95), r.id);
+  assert.equal(cl.ok, true, "Responder agora");
   ({ r, a } = await cur());
-  assert.ok(a.deadline, "prazo começou");
-  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, true)).ok, true, "Próximo trecho durante a vez");
-  ({ r, a } = await cur());
-  assert.equal(a.stage_points, 80, "vale o trecho atual");
+  assert.equal(r.status, "answering");
+  assert.equal(a.stage_points, 80, "vale o trecho de quando decidiu responder");
+  assert.ok(a.deadline, "o prazo começa no Responder agora");
+  assert.equal(a.player_id, ts.players.find((p) => p.nickname === "T0").id);
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 2, true)).ok, false, "respondendo: a música parou");
   assert.equal((await rpc("npl_submit_answer", tc, P(96), a.id, "", "x")).reason, "not_your_team");
   await rpc("npl_submit_answer", tc, P(95), a.id, "", "nada a ver mesmo");
   ({ r, a } = await cur());
-  assert.equal(r.status, "answering", "errou: passa a vez");
-  assert.equal(a.team_id, tt[1]);
-  assert.equal(a.stage_points, 40, "valendo metade");
-  assert.ok(a.deadline, "a música continua: o prazo já corre");
+  assert.equal(r.status, "playing", "errou: passa a vez");
+  assert.equal(r.turn.team, tt[1]);
+  assert.equal(r.turn.wait, true, "tela 'Vez do time X!' esperando o Continuar");
+  assert.equal(r.stage, 3, "o próximo segue do trecho seguinte");
+  assert.equal(a, undefined);
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 3, false)).ok, false, "nada toca antes do Continuar");
+  assert.equal((await rpc("npl_turn_claim", tc, P(96), r.id)).reason, "wait");
+  assert.equal(ts.teams.find((t) => t.id === tt[0]).score, 0);
+  assert.equal((await rpc("npl_turn_continue", tc, OWNER, r.id)).ok, true);
+  assert.equal((await rpc("npl_turn_continue", tc, OWNER, r.id)).ok, false, "uma vez só");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 3, false)).ok, true);
+  await rpc("npl_turn_claim", tc, P(96), r.id);
+  ({ r, a } = await cur());
+  assert.equal(a.stage_points, 30, "metade dos pontos do trecho (60)");
+  assert.ok(a.steal);
   const ok2 = await rpc("npl_submit_answer", tc, P(96), a.id, "", "Faixa Vez 1");
   assert.equal(ok2.result, "correct");
-  assert.equal(ok2.points, 40);
+  assert.equal(ok2.points, 30);
+  ts = await rpc("npl_get_state", tc);
+  assert.equal(ts.teams.find((t) => t.id === tt[0]).score, 0, "passa a vez: sem penalidade");
+
+  // 2ª rodada: rodízio; a vez dá a volta (trecho seguinte a cada erro); no último trecho cada time tenta uma vez
   await rpc("npl_next_round", tc, OWNER, 1);
   ({ r } = await cur());
   await rpc("npl_round_begin", tc, OWNER, r.id, [], []);
-  ({ r, a } = await cur());
+  ({ r } = await cur());
   assert.equal(r.turn.team, tt[1], "rodízio: a 2ª rodada é do 2º time");
-  // tempo esgotado também passa; todos erraram: revela
-  await rpc("npl_play", tc, OWNER, r.id, 1, false);
-  for (let i = 0; i < 3; i++) {
-    ({ r, a } = await cur());
-    await db.query("update npl_attempts set deadline = now() - interval '5 seconds' where id = $1", [a.id]);
-    assert.equal(await rpc("npl_tick", tc), true);
+  const order = [tt[1], tt[2], tt[0]];
+  for (let k = 0; k < 6 + 2; k++) {
+    ({ r } = await cur());
+    if (r.status === "revealed") break;
+    if (r.turn.wait) await rpc("npl_turn_continue", tc, OWNER, r.id);
+    ({ r } = await cur());
+    assert.equal(r.turn.team, order[k % 3], `vez ${k}`);
+    assert.equal(r.stage, Math.min(6, k + 1), `trecho ${k}`);
+    await rpc("npl_play", tc, OWNER, r.id, r.stage, false);
+    await rpc("npl_turn_claim_host", tc, OWNER, r.id); // "Vai responder" (apresentador / controle)
+    ({ a } = await cur());
+    await expire(a.id);
   }
   ({ r } = await cur());
-  assert.equal(r.status, "revealed", "todos tentaram: revela");
-  assert.equal(r.turn.tried.length, 3);
-  // passa a vez desligada: errou, revela
+  assert.equal(r.status, "revealed", "último trecho: todos tentaram, revela sem pontos");
+  assert.equal(r.stage, 6);
+  assert.equal(r.points, 0);
+  assert.equal(r.turn.last.length, 3);
+
+  // passa a vez desligada: o mesmo time pede mais trechos e tenta de novo (com penalidade)
   await rpc("npl_next_round", tc, OWNER, 2);
   await rpc("npl_finish_match", tc, OWNER);
-  await rpc("npl_update_settings", tc, OWNER, { passOnWrong: false });
+  await rpc("npl_update_settings", tc, OWNER, { passOnWrong: false, penalty: 20 });
   await rpc("npl_start_match", tc, OWNER, tracks, 3);
   ({ r } = await cur());
   await rpc("npl_round_begin", tc, OWNER, r.id, [], []);
-  ({ r, a } = await cur());
+  ({ r } = await cur());
+  await rpc("npl_play", tc, OWNER, r.id, 1, false);
+  await rpc("npl_turn_claim", tc, P(95), r.id);
+  ({ a } = await cur());
   await rpc("npl_submit_answer", tc, P(95), a.id, "", "errado");
   ({ r } = await cur());
-  assert.equal(r.status, "revealed", "sem passar a vez: errou, revela");
+  assert.equal(r.status, "playing", "sem passar a vez: tenta de novo");
+  assert.equal(r.turn.team, tt[0]);
+  assert.ok(!r.turn.wait);
+  ts = await rpc("npl_get_state", tc);
+  assert.equal(ts.teams.find((t) => t.id === tt[0]).score, -20, "penalidade vale sem passar a vez");
+  for (let s = 1; s < 6; s++) await rpc("npl_play", tc, OWNER, r.id, s, true);
+  await rpc("npl_turn_claim", tc, P(95), r.id);
+  ({ a } = await cur());
+  assert.equal(a.stage_points, 10, "último trecho, valor cheio");
+  await rpc("npl_submit_answer", tc, P(95), a.id, "", "errado de novo");
+  ({ r } = await cur());
+  assert.equal(r.status, "revealed", "a pista acabou: revela");
+  await rpc("npl_finish_match", tc, OWNER);
+
+  // continuar a letra no "Um time por vez": resposta só depois que a música para
+  await rpc("npl_update_settings", tc, OWNER, { passOnWrong: true, penalty: 0, mode: "continue", modePool: ["continue", "quiz_open"] });
+  const contPlan = {
+    lines: [{ text: "linha um aqui", start: 1, end: 5 }, { text: "linha dois aqui", start: 5, end: 11 }],
+    hidden: { text: "a linha escondida certa", start: 12, end: 15 }, after: [],
+  };
+  const qopen = { kind: "artist", q: "Quem canta?", answer: "Vez", accept: ["Vez"], open: true };
+  await rpc("npl_start_match", tc, OWNER, [
+    { ...tracks[0], mode: "continue", cont: contPlan },
+    { ...tracks[1], mode: "quiz_open", quiz: qopen },
+    { ...tracks[2], mode: "continue", cont: contPlan },
+  ], 3);
+  ({ r } = await cur());
+  await rpc("npl_round_begin", tc, OWNER, r.id, [], []);
+  ({ r, a } = await cur());
+  assert.equal(r.mode, "continue");
+  assert.equal(r.status, "answering", "continuar: a vez abre direto");
+  assert.equal(a.deadline, null);
+  assert.equal((await rpc("npl_submit_answer", tc, P(95), a.id, "", "a linha escondida certa")).reason, "music", "antes de tocar");
+  await rpc("npl_play", tc, OWNER, r.id, 1, false);
+  ({ r, a } = await cur());
+  assert.ok(Date.parse(a.deadline) - Date.parse(r.play_at) > 20000, "o prazo conta a partir de quando a música para");
+  assert.equal((await rpc("npl_submit_answer", tc, P(95), a.id, "", "a linha escondida certa")).reason, "music", "música tocando");
+  await db.query("update npl_rounds set play_at = play_at - interval '60 seconds' where id = $1", [r.id]);
+  assert.equal((await rpc("npl_submit_answer", tc, P(95), a.id, "", "a linha escondida certa")).result, "correct");
+
+  // quiz no botão: pergunta na tela sem tempo; "Valendo!" começa o prazo do time da vez
+  await rpc("npl_next_round", tc, OWNER, 1);
+  ({ r } = await cur());
+  await rpc0("npl_round_begin", tc, OWNER, r.id, [], []);
+  await rpc0("npl_round_go", tc, OWNER, r.id);
+  ({ r, a } = await cur());
+  assert.equal(r.mode, "quiz_open");
+  assert.equal(a.team_id, tt[1]);
+  assert.equal(a.deadline, null, "sem tempo antes do Valendo!");
+  assert.equal((await rpc("npl_submit_answer", tc, P(96), a.id, "", "Vez")).reason, "not_live");
+  assert.equal((await rpc("npl_play", tc, OWNER, r.id, 1, false)).ok, false, "música só no Valendo!");
+  await rpc0("npl_quiz_go", tc, OWNER, r.id);
+  ({ r, a } = await cur());
+  assert.ok(a.deadline, "Valendo!: prazo começou");
+  assert.equal(r.play_seq, 1, "Valendo!: a música toca");
+  await rpc("npl_submit_answer", tc, P(96), a.id, "", "outra coisa");
+  ({ r, a } = await cur());
+  assert.equal(r.turn.wait, true, "Vez do time X!");
+  await rpc("npl_turn_continue", tc, OWNER, r.id);
+  ({ r, a } = await cur());
+  assert.equal(a.team_id, tt[2]);
+  assert.ok(a.deadline, "pergunta já valendo: o prazo corre no Continuar");
+  assert.equal(a.stage_points, 50);
   console.log("ok um time por vez");
 }
 

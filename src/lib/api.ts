@@ -75,6 +75,21 @@ export const api = {
       p_offsets: offsets,
       p_meta: meta ?? {},
     }),
+  /** "Começar rodada": sai da tela de apresentação. */
+  roundGo: (code: string, owner: string, roundId: string) =>
+    call<{ ok: boolean }>("npl_round_go", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
+  /** Quizzes: "Valendo!" (começa o prazo, libera os botões e a música). */
+  quizGo: (code: string, owner: string, roundId: string) =>
+    call<{ ok: boolean }>("npl_quiz_go", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
+  /** "Um time por vez": "Continuar" depois da tela "Vez do time X!". */
+  turnContinue: (code: string, owner: string, roundId: string) =>
+    call<{ ok: boolean }>("npl_turn_continue", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
+  /** "Um time por vez" (Clássico / Obra / Instrumentos): o time da vez aperta "Responder agora". */
+  turnClaim: (code: string, token: string, roundId: string) =>
+    call<{ ok: boolean; reason?: string; attempt_id?: string }>("npl_turn_claim", { p_code: code, p_token: token, p_round_id: roundId }),
+  /** Com apresentador: "Vai responder" (o time da vez disse que sabe). */
+  turnClaimHost: (code: string, owner: string, roundId: string) =>
+    call<{ ok: boolean; reason?: string; attempt_id?: string }>("npl_turn_claim_host", { p_code: code, p_owner_token: owner, p_round_id: roundId }),
   /** Leilão: lance de `secs` segundos, ou "Pode tocar!" (secs = null). */
   auctionBid: (code: string, token: string, roundId: string, secs: number | null) =>
     call<{ ok: boolean; reason?: string; phase?: string; low?: number }>("npl_auction_bid", {
@@ -307,6 +322,7 @@ export const deezer = {
     sources: MusicSource[];
     curiosities: boolean;
     recent: string[];
+    versionFilter: boolean;
   }) =>
     getJson<{ results: ({ quiz: QuizPlan; track?: PickedTrack } | null)[] }>("/api/game/quiz", {
       method: "POST",

@@ -123,6 +123,7 @@ export type QuizState = {
   year?: boolean;
   options?: string[]; // só no quiz de alternativas
   n?: number;
+  live?: boolean; // "Valendo!": o tempo corre e os botões liberam (antes: só a pergunta na tela)
   starts_at?: string; // alternativas: quando os botões liberam
   deadline?: string; // alternativas: fim do prazo ("Tempo de resposta"; sem limite = não existe)
   secs?: number; // alternativas: prazo de referência dos pontos (sem limite = 30)
@@ -172,7 +173,17 @@ export type StemsStatus = {
 };
 
 /** "Um time por vez": de quem é a vez nesta rodada. */
-export type TurnState = { owner: string; team: string; order: string[]; tried: string[]; factor: number };
+export type TurnState = {
+  owner: string;
+  team: string;
+  order: string[];
+  tried: string[];
+  factor: number;
+  /** "Vez do time X!": a vez passou e espera o controlador apertar "Continuar" */
+  wait?: boolean;
+  /** times que já erraram no último trecho (Clássico / Obra / Instrumentos) */
+  last?: string[];
+};
 
 /**
  * Dica do Leilão: gênero + ano. year = menor ano de lançamento da mesma música
@@ -182,7 +193,8 @@ export type TurnState = { owner: string; team: string; order: string[]; tried: s
 export type TrackMeta = { genre: string | null; year: number | null; compilation: boolean; track_year: number | null };
 
 export type Phase ="config" | "lobby" | "playing" | "finished";
-export type RoundStatus = "loading" | "playing" | "answering" | "doubt" | "revealed" | "scoreboard";
+/** intro = tela de apresentação da rodada (espera o "Começar rodada"). */
+export type RoundStatus = "loading" | "intro" | "playing" | "answering" | "doubt" | "revealed" | "scoreboard";
 export type AttemptStatus = "open" | "doubt" | "correct" | "wrong" | "timeout" | "cancelled" | "late";
 export type FieldResult = "ok" | "doubt" | "wrong" | "empty" | null;
 

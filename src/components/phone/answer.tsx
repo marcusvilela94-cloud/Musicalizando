@@ -7,6 +7,7 @@ import { textOn } from "@/lib/colors";
 import { friendlyError } from "@/lib/errors";
 import { formatSeconds, lateTaps, missingParts, teamById } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
+import { contCanAnswer } from "@/modes/continue/logic";
 import { OBRA_ASK, obraOf } from "@/modes/obra/logic";
 import { vocalsOnly } from "@/modes/stems/logic";
 import { isQuizMode, quizOf } from "@/modes/quiz/logic";
@@ -191,13 +192,16 @@ export function OtherAnswering({
   const t = teamById(state, attempt.team_id);
   const left = useCountdown(ctx, attempt, state.room.paused, now);
   const mine = lateTaps(state, attempt).find((l) => l.team?.id === ctx.team?.id);
+  // continuar a letra: enquanto a música toca, o time da vez só escuta
+  const round = state.rounds.find((r) => r.id === attempt.round_id);
+  const listening = round?.mode === "continue" && !contCanAnswer(round, now);
   if (!t) return null;
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: t.color, color: textOn(t.color) }}>
       {turn && <p className="font-display text-2xl">Vez do time</p>}
       <p className="font-display text-4xl font-bold">{teamLabel(t)}</p>
-      <p className="font-display text-2xl">{spoken ? "está respondendo…" : "está digitando…"}</p>
-      {left !== null && <p className="font-display text-6xl font-bold tabular-nums">{Math.ceil(left / 1000)}</p>}
+      <p className="font-display text-2xl">{listening ? "🎧 escutando a música…" : spoken ? "está respondendo…" : "está digitando…"}</p>
+      {left !== null && !listening && <p className="font-display text-6xl font-bold tabular-nums">{Math.ceil(left / 1000)}</p>}
       {mine && <p className="text-lg opacity-90">Seu time apertou {formatSeconds(mine.ms)}s depois 😬</p>}
     </div>
   );

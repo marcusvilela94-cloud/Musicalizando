@@ -5,6 +5,7 @@ import { GameControls, OverrideButtons, useGameActions } from "@/components/cont
 import { SettingsForm } from "@/components/control/SettingsForm";
 import { TeamsBoard } from "@/components/control/TeamsBoard";
 import { RoomTheme } from "@/components/EmojiRain";
+import { RoundIntro, TurnHandoff } from "@/components/RoundIntro";
 import { Button, Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
 import { type Peers, useRoom } from "@/hooks/useRoom";
@@ -26,7 +27,9 @@ import {
   finalRanking,
   tiebreakLeft,
   tiebreakOf,
+  turnClaims,
   turnOf,
+  turnWaiting,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
@@ -158,6 +161,14 @@ function PresenterGame({ state, code, token, serverNow }: { state: RoomState; co
         </div>
       )}
 
+      {round.status === "intro" && <RoundIntro state={state} round={round} size="phone" />}
+      {turnWaiting(round) && <TurnHandoff state={state} round={round} size="phone" />}
+      {turnClaims(round) && round.status === "playing" && !turnWaiting(round) && (
+        <p className="rounded-xl bg-white/10 px-3 py-2 text-center">
+          Toque os trechos. Quando o time <b>{teamById(state, turnOf(round)?.team)?.name}</b> disser que sabe, aperte “Vai responder” (ou eles apertam “Responder agora” no celular).
+        </p>
+      )}
+
       {round.status === "loading" ? (
         <Spinner label="Carregando a música na TV…" />
       ) : (
@@ -204,7 +215,7 @@ function AnswerCard({ state, round, answer }: { state: RoomState; round: Round; 
         <div className="mb-2 rounded-xl bg-yellow-300 px-3 py-2 text-violet-950">
           <p className="text-sm">{answer.quiz.kind === "obra" ? `${answer.quiz.emoji ?? "🎭"} ${answer.quiz.q}` : `❓ ${answer.quiz.q}`}</p>
           <p className="font-display text-2xl font-bold">✅ {answer.quiz.answer} {!need.title && "✓"}</p>
-          {answer.quiz.hide_song && <p className="text-xs">A música de fundo não tem relação com a pergunta (não é revelada).</p>}
+          {answer.quiz.hide_song && <p className="text-xs">Pergunta sem música relacionada: nada toca nesta rodada.</p>}
           {answer.quiz.kind === "obra" && (answer.quiz.accept?.length ?? 0) > 1 && (
             <p className="text-xs">Também vale: {answer.quiz.accept!.filter((a) => a !== answer.quiz!.answer).join(" · ")}</p>
           )}

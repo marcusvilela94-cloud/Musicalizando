@@ -39,6 +39,10 @@ Tudo usa o prefixo `npl_`. Aplique no SQL Editor, nesta ordem:
 - **Estilo "Com apresentador"**: a TV só exibe. Quem escaneia o QR "Sou o apresentador" comanda tudo pelo
   celular (não joga e vê a resposta desde o início). Resposta falada (o apresentador julga) ou digitada.
   Se o celular dele cair, a TV pausa e mostra o QR de reconexão.
+- **Ritmo por botão**: cada rodada abre numa tela de apresentação (modo, como funciona, de quem é a vez,
+  quanto vale) e só começa no "Começar rodada" (Enter na TV). Quizzes: a pergunta aparece sem tempo e o
+  "Valendo!" libera os botões. No "Um time por vez", quando a vez passa aparece "Vez do time X!" e o jogo
+  espera o "Continuar"; em Clássico / Obra / Instrumentos o time da vez aperta "Responder agora" quando souber.
 - Nada toca sozinho: Tocar / Repetir / Próximo trecho. Cada trecho começa num ponto sorteado da prévia
   (guardado na rodada). Artista vale 50%, música 100%. Quem erra fica bloqueado alguns segundos (horário no banco).
 

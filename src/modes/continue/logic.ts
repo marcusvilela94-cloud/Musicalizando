@@ -35,3 +35,21 @@ export function singing(r: Round | null | undefined, now: number) {
   const until = singUntil(r);
   return !!r && r.status === "revealed" && !!c?.reveal && !c.sung && until !== null && now < until;
 }
+
+/** Quando o trecho tocado para (relógio do servidor), ou null se ainda não tocou. */
+export function contStopAt(r: Round | null | undefined): number | null {
+  const c = contOf(r);
+  if (!c || !r?.play_at || r.played_stage < 1) return null;
+  const { from, to } = contClip(c);
+  return Date.parse(r.play_at) + (to - from) * 1000;
+}
+
+/**
+ * EU SEI! / resposta liberados? Só depois que a música para antes da linha
+ * escondida (o servidor confere o mesmo; aqui com meio segundo de folga
+ * para o som da TV acabar de verdade).
+ */
+export function contCanAnswer(r: Round | null | undefined, now: number) {
+  const stop = contStopAt(r);
+  return stop !== null && now >= stop + 500;
+}

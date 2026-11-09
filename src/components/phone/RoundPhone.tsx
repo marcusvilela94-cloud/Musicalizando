@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { RoundIntro, TurnHandoff } from "@/components/RoundIntro";
 import { Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
 import { api } from "@/lib/api";
@@ -14,18 +15,23 @@ import {
   ranking,
   recentDecision,
   roundDelta,
+  stagePoints,
   teamById,
   tiebreakDecider,
   tiebreakLeft,
   tiebreakOf,
+  turnClaims,
   turnOf,
+  turnWaiting,
 } from "@/lib/game";
 import type { Attempt, RoomState, Round } from "@/lib/types";
 import { getMode } from "@/modes";
+import { contCanAnswer } from "@/modes/continue/logic";
 import { quizOf } from "@/modes/quiz/logic";
 import { QuizAnswerLine, QuizPhoneQuestion } from "@/modes/quiz/QuizViews";
 import { AnswerForm, FoundLine, OtherAnswering, SpeakNow, vibrate } from "./answer";
 import type { PhoneCtx } from "./PhoneApp";
+import { teamLabel } from "@/lib/icons";
 
 const REASONS: Record<string, string> = {
   locked: "Seu time está bloqueado.",
@@ -37,6 +43,10 @@ const REASONS: Record<string, string> = {
   tiebreak: "Só os times empatados jogam o desempate.",
   turns: "Não é a vez do seu time.",
   choice: "Responda pelos botões das alternativas.",
+  music: "Espere a música parar.",
+  not_live: "Espere o “Valendo!”.",
+  wait: "Espere o “Continuar”.",
+  not_played: "Esperem tocar o primeiro trecho.",
 };
 
 export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: PhoneCtx; round: Round | null }) {
@@ -82,7 +92,18 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
   const watching = !!tb && inPlay && !tiebreakLeft(tb).includes(team.id);
 
   let body: React.ReactNode = null;
-  if (watching) {
+  const myTurn = turnOf(round)?.team === team.id;
+  if (round.status === "intro") {
+    // apresentação: a mesma informação da TV, esperando o "Começar rodada"
+    body = (
+      <>
+        <RoundIntro state={state} round={round} size="phone" />
+        <p className="text-white/60">Aguardando “Começar rodada”…</p>
+      </>
+    );
+  } else if (turnWaiting(round)) {
+    body = <TurnHandoff state={state} round={round} size="phone" mine={myTurn} />;
+  } else if (watching) {
     body = <TiebreakWatch state={state} round={round} out={tb.teams.includes(team.id)} />;
   } else if (ModeView && inPlay) {
     body = notYet ? (
@@ -92,6 +113,7 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
     );
   } else if (round.status === "playing") {
     if (notYet) body = <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>;
+    else if (turnClaims(round)) body = <ClaimButton state={state} ctx={ctx} round={round} mine={myTurn} onFeedback={setFeedback} />;
     else body = <BuzzButton state={state} ctx={ctx} round={round} now={now} onFeedback={setFeedback} />;
   } else if (round.status === "answering" && attempt) {
     // um time por vez: sem EU SEI!, o time da vez responde direto
@@ -100,6 +122,8 @@ export function RoundPhone({ state, ctx, round }: { state: RoomState; ctx: Phone
     const quizHint = quizOf(round) ? <QuizPhoneQuestion round={round} now={now} /> : undefined;
     if (attempt.team_id !== team.id) body = <OtherAnswering state={state} ctx={ctx} attempt={attempt} now={now} spoken={spoken} turn={!!turn} />;
     else if (notYet) body = <p className="font-display text-3xl">Você entra na próxima música! 🎧</p>;
+    else if (turn && round.mode === "continue" && !contCanAnswer(round, now)) body = <ListenFirst round={round} who={who} />;
+    else if (turn && round.mode === "quiz_open" && !round.quiz?.live) body = <ListenFirst round={round} who={who} hint={quizHint} />;
     else if (spoken) body = <SpeakNow state={state} ctx={ctx} attempt={attempt} now={now} title={who} />;
     else body = <AnswerForm key={attempt.id} state={state} ctx={ctx} round={round} attempt={attempt} now={now} who={who} hint={quizHint} />;
   } else if (round.status === "doubt" && attempt) {
@@ -142,6 +166,96 @@ function DecisionToast({ attempt, mode, tiebreak }: { attempt: Attempt; mode: st
   );
 }
 
+/** Um time por vez: a resposta só abre quando a música para (continuar) ou no "Valendo!" (quiz). */
+function ListenFirst({ round, who, hint }: { round: Round; who?: string; hint?: React.ReactNode }) {
+  const cont = round.mode === "continue";
+  return (
+    <div className="flex w-full max-w-sm flex-col items-center gap-4">
+      {who && <p className="font-display text-3xl font-bold text-yellow-300">{who}</p>}
+      {hint}
+      <p className="font-display text-5xl">{cont ? "🎧" : "📖"}</p>
+      <p className="font-display text-2xl">
+        {cont
+          ? round.played_stage === 0
+            ? "Esperem a música tocar…"
+            : "Escutem! A resposta abre quando a música parar."
+          : "Leiam a pergunta. O tempo começa no “Valendo!”"}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Um time por vez (Clássico / Obra / Instrumentos): o controlador toca os
+ * trechos; o time da vez aperta "Responder agora" quando souber (aí o tempo
+ * começa e vale o trecho atual). Os outros times assistem.
+ */
+function ClaimButton({ state, ctx, round, mine, onFeedback }: { state: RoomState; ctx: PhoneCtx; round: Round; mine: boolean; onFeedback: (m: string) => void }) {
+  const turn = turnOf(round)!;
+  const t = teamById(state, turn.team);
+  const busy = useRef(false);
+  const [pressed, setPressed] = useState(false);
+  const pts = Math.round(stagePoints(round));
+  const ready = round.played_stage >= 1;
+  if (!mine) {
+    return (
+      <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-3xl p-6" style={{ background: t?.color, color: t ? textOn(t.color) : undefined }}>
+        <p className="font-display text-2xl">Vez do time</p>
+        <p className="font-display text-4xl font-bold">{t ? teamLabel(t) : "?"}</p>
+        <p className="font-display text-xl opacity-90">valendo {pts} pts{turn.factor < 1 ? " (metade)" : ""}</p>
+        <p className="text-lg opacity-80">Fiquem de olho: se errarem, a vez pode passar!</p>
+      </div>
+    );
+  }
+  const team = ctx.team!;
+  const bg = ready ? team.color : "#64748b";
+  const press = async () => {
+    if (busy.current || !ready) return;
+    busy.current = true;
+    setPressed(true);
+    vibrate(40);
+    try {
+      const r = await api.turnClaim(ctx.code, ctx.token, round.id);
+      if (!r.ok) onFeedback(REASONS[r.reason ?? ""] ?? "Não deu.");
+    } catch (e) {
+      onFeedback(friendlyError(e));
+    } finally {
+      busy.current = false;
+      setPressed(false);
+    }
+  };
+  return (
+    <div className="flex w-full flex-col items-center gap-4">
+      <p className="font-display text-3xl font-bold text-yellow-300">{turn.factor < 1 ? "Passou para vocês!" : "Vez do seu time!"}</p>
+      <FoundLine state={state} round={round} />
+      <button
+        onPointerDown={(e) => {
+          e.preventDefault();
+          press();
+        }}
+        disabled={!ready}
+        className={`aspect-square w-[min(80vw,55vh)] rounded-full font-display font-bold shadow-[0_14px_0_rgba(0,0,0,0.35)] transition active:translate-y-3 active:shadow-[0_2px_0_rgba(0,0,0,0.35)] ${
+          ready ? "npl-pulse text-5xl" : "text-3xl"
+        } ${pressed ? "translate-y-3 shadow-[0_2px_0_rgba(0,0,0,0.35)]" : ""}`}
+        style={{ background: bg, color: textOn(bg) }}
+      >
+        {ready ? (
+          <>
+            Responder
+            <br />
+            agora
+          </>
+        ) : (
+          "Esperem o 1º trecho…"
+        )}
+      </button>
+      <p className="font-display text-xl text-white/80">
+        Valendo <b className="text-yellow-300">{pts}</b> pts agora{turn.factor < 1 ? " (metade)" : ""} — peçam mais trechos ou respondam
+      </p>
+    </div>
+  );
+}
+
 function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; ctx: PhoneCtx; round: Round; now: number; onFeedback: (m: string) => void }) {
   const team = ctx.team!;
   const busy = useRef(false);
@@ -149,10 +263,14 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
   const lock = lockInfo(round, team.id, now);
   const lyrics = round.mode === "lyrics";
   const locked = !!lock;
-  const bg = locked ? "#64748b" : team.color;
+  // continuar a letra: só depois que a música para; quiz no botão: só depois do "Valendo!"
+  const waitMusic = round.mode === "continue" && !contCanAnswer(round, now);
+  const notLive = round.mode === "quiz_open" && !round.quiz?.live;
+  const held = waitMusic || notLive;
+  const bg = locked || held ? "#64748b" : team.color;
 
   const press = async () => {
-    if (busy.current || locked) return;
+    if (busy.current || locked || held) return;
     busy.current = true;
     setPressed(true);
     vibrate(40);
@@ -181,13 +299,19 @@ function BuzzButton({ state, ctx, round, now, onFeedback }: { state: RoomState; 
           e.preventDefault();
           press();
         }}
-        disabled={locked}
+        disabled={locked || held}
         className={`aspect-square w-[min(80vw,55vh)] rounded-full font-display font-bold shadow-[0_14px_0_rgba(0,0,0,0.35)] transition active:translate-y-3 active:shadow-[0_2px_0_rgba(0,0,0,0.35)] ${
-          locked ? "text-4xl" : "npl-pulse text-6xl"
+          locked || held ? "text-4xl" : "npl-pulse text-6xl"
         } ${pressed ? "translate-y-3 shadow-[0_2px_0_rgba(0,0,0,0.35)]" : ""}`}
         style={{ background: bg, color: textOn(bg) }}
       >
-        {locked ? (
+        {held && !locked ? (
+          <>
+            EU SEI!
+            <br />
+            <span className="text-2xl">{notLive ? "Aguardem o “Valendo!”" : round.played_stage === 0 ? "Esperem a música tocar" : "Espere a música parar"}</span>
+          </>
+        ) : locked ? (
           <>
             🔒
             <br />

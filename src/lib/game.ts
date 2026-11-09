@@ -13,8 +13,27 @@ export function turnOf(r: Round | null | undefined): TurnState | null {
   return t && typeof t.team === "string" && Array.isArray(t.order) ? (t as TurnState) : null;
 }
 
-/** A vez do time está aberta (a música/pista segue tocando enquanto ele responde). */
-export const turnOpen = (r: Round | null | undefined) => !!turnOf(r) && r!.status === "answering";
+/**
+ * "Um time por vez" em Clássico / Obra / Instrumentos: o controlador toca os
+ * trechos e o time da vez aperta "Responder agora" (aí a música para).
+ */
+export const TURN_CLAIM_MODES = ["classic", "obra", "stems"];
+export const turnClaims = (r: Round | null | undefined) => !!turnOf(r) && TURN_CLAIM_MODES.includes(r!.mode);
+
+/** A vez do time está aberta e a música/pista segue tocando enquanto ele responde (letra, continuar, quiz). */
+export const turnOpen = (r: Round | null | undefined) => !!turnOf(r) && r!.status === "answering" && !turnClaims(r);
+
+/** "Vez do time X!": a vez passou e espera o "Continuar". */
+export const turnWaiting = (r: Round | null | undefined) => !!turnOf(r)?.wait && r!.status === "playing";
+
+/** Quiz com a pergunta na tela esperando o "Valendo!". */
+export const quizWaiting = (r: Round | null | undefined) =>
+  !!r && (r.mode === "quiz_open" || r.mode === "quiz_choice") && !!r.quiz?.q && !r.quiz?.live &&
+  (r.status === "playing" || r.status === "answering");
+
+/** Curiosidade sem música relacionada: nada toca (nem na revelação). */
+export const quizMuted = (r: Round | null | undefined) =>
+  !!r && (r.mode === "quiz_open" || r.mode === "quiz_choice") && r.quiz?.play === false && !!r.quiz?.hide_song;
 
 /** Estado do desempate (null fora da morte súbita). */
 export function tiebreakOf(r: Round | null | undefined): TiebreakState | null {

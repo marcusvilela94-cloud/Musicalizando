@@ -44,6 +44,8 @@ await rpc("npl_start_match", { p_code: code, p_owner_token: OWNER, p_tracks: tra
 let st = await rpc("npl_get_state", { p_code: code });
 const R = st.rounds[0].id;
 await rpc("npl_round_begin", { p_code: code, p_owner_token: OWNER, p_round_id: R, p_artists: ["Daft Punk"], p_offsets: [3, 10, 20, 0, 12, 0] });
+assert.equal((await rpc("npl_get_state", { p_code: code })).rounds[0].status, "intro", "apresentação da rodada");
+assert.equal((await rpc("npl_round_go", { p_code: code, p_owner_token: OWNER, p_round_id: R })).ok, true);
 const pl = await rpc("npl_play", { p_code: code, p_owner_token: OWNER, p_round_id: R, p_stage: 1, p_advance: false });
 assert.equal(pl.ok, true);
 const bz = await rpc("npl_buzz", { p_code: code, p_token: A, p_round_id: R });

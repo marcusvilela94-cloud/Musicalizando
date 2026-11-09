@@ -1,9 +1,24 @@
 "use client";
 import { useState } from "react";
+import { vezDo } from "@/components/RoundIntro";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
-import { currentAttempt, currentRound, ranking, teamById, tiebreakDecider, tiebreakLeft, tiebreakOf, turnOpen } from "@/lib/game";
+import {
+  currentAttempt,
+  currentRound,
+  isHostStyle,
+  quizWaiting,
+  ranking,
+  teamById,
+  tiebreakDecider,
+  tiebreakLeft,
+  tiebreakOf,
+  turnClaims,
+  turnOf,
+  turnOpen,
+  turnWaiting,
+} from "@/lib/game";
 import type { Attempt, RoomState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, entryPlayed, queueEntry } from "@/modes/auction/logic";
@@ -22,7 +37,12 @@ export function useGameActions(state: RoomState, code: string, token: string, se
   const st = round?.status;
   // um time por vez: a vez já abre com a rodada e os controles seguem valendo
   const inPlay = !!round && (round.status === "playing" || turnOpen(round));
-  const open = inPlay && !paused;
+  // telas que esperam o controlador: apresentação, "Vez do time X!" e quiz antes do "Valendo!"
+  const intro = round?.status === "intro";
+  const wait = turnWaiting(round);
+  const quizWait = quizWaiting(round) && !wait;
+  const gate = intro || wait || quizWait;
+  const open = inPlay && !paused && !gate;
   // quiz de alternativas: a prévia toca sozinha e as respostas fecham no prazo
   const choice = round?.mode === "quiz_choice";
   // pergunta da capa: sem som
@@ -46,8 +66,14 @@ export function useGameActions(state: RoomState, code: string, token: string, se
     play: auction ? open && auctionPlay : open && !lyrics && !choice && !silent,
     next: open && !auction && !lastStage && !choice,
     reveal: open && !auction && (lastStage || choice),
+    go: intro,
+    live: quizWait && !paused,
+    turnContinue: wait,
+    // com apresentador: "Vai responder" pelo time da vez (Clássico / Obra / Instrumentos)
+    claimHost:
+      isHostStyle(state) && turnClaims(round) && round?.status === "playing" && !wait && !paused && (round?.played_stage ?? 0) >= 1,
     pause: !!round && state.room.phase === "playing",
-    skip: !!round && ["loading", "playing", "answering", "doubt"].includes(round.status),
+    skip: !!round && ["loading", "intro", "playing", "answering", "doubt"].includes(round.status),
     endTurn: attempt?.status === "open",
     scoreboard: st === "revealed",
     nextRound: st === "revealed" || st === "scoreboard",
@@ -60,6 +86,16 @@ export function useGameActions(state: RoomState, code: string, token: string, se
       ),
     next: () => can.next && run(() => api.play(code, token, round!.id, round!.stage, true)),
     reveal: () => can.reveal && run(() => api.endRound(code, token, round!.id)),
+    go: () => can.go && run(() => api.roundGo(code, token, round!.id)),
+    live: () => can.live && run(() => api.quizGo(code, token, round!.id)),
+    turnContinue: () => can.turnContinue && run(() => api.turnContinue(code, token, round!.id)),
+    claimHost: () => can.claimHost && run(() => api.turnClaimHost(code, token, round!.id)),
+    /** Enter: o botão que a tela está esperando (Começar rodada / Valendo! / Continuar) */
+    primary: (): void => {
+      if (can.go) actions.go();
+      else if (can.turnContinue) actions.turnContinue();
+      else if (can.live) actions.live();
+    },
     togglePause: () => can.pause && run(() => api.pause(code, token, !paused)),
     skip: () => can.skip && run(() => api.skipRound(code, token, round!.id)),
     endTurn: () => can.endTurn && run(() => api.endTurn(code, token, attempt!.id)),
@@ -74,14 +110,16 @@ export function useGameActions(state: RoomState, code: string, token: string, se
       if (window.confirm("Encerrar a partida agora?")) run(() => api.finishMatch(code, token));
     },
   };
-  return { round, attempt, paused, stages, auction, lyrics, lastStage, inPlay, choice, silent, can, actions, error, setError, run };
+  return { round, attempt, paused, stages, auction, lyrics, lastStage, inPlay, gate, choice, silent, can, actions, error, setError, run };
 }
 
 export type GameActions = ReturnType<typeof useGameActions>;
 
 /** Botões de controle. `size="tv"` = botões grandes com a dica do atalho de teclado. */
 export function GameControls({ g, state, size = "phone" }: { g: GameActions; state: RoomState; size?: "tv" | "phone" }) {
-  const { round, can, actions, paused, stages, auction, lyrics, lastStage, inPlay, choice, silent } = g;
+  const { round, can, actions, paused, stages, auction, lyrics, lastStage, gate, choice, silent } = g;
+  const inPlay = g.inPlay && !gate;
+  const turnTeam = teamById(state, turnOf(round)?.team);
   if (!round) return null;
   const tv = size === "tv";
   const k = (key: string) => (tv ? <kbd className="ml-2 rounded bg-black/25 px-1.5 text-sm opacity-70">{key}</kbd> : null);
@@ -105,7 +143,30 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
   return (
     <div className="flex flex-col gap-2">
       <div className={`flex flex-wrap gap-2 ${tv ? "justify-center" : ""}`}>
-        {round.status === "playing" && auction && (
+        {can.go && (
+          <Button className={big} onClick={actions.go}>
+            ▶ Começar rodada{choice || round.mode === "quiz_open" ? " (mostrar pergunta)" : ""}
+            {k("Enter")}
+          </Button>
+        )}
+        {can.turnContinue && (
+          <Button className={big} onClick={actions.turnContinue}>
+            ▶ Continuar{turnTeam ? ` (${vezDo(turnTeam.name).toLowerCase()} ${turnTeam.name})` : ""}
+            {k("Enter")}
+          </Button>
+        )}
+        {quizWaiting(round) && !can.turnContinue && (
+          <Button className={big} disabled={!can.live} onClick={actions.live}>
+            ⏱ Valendo!
+            {k("Enter")}
+          </Button>
+        )}
+        {can.claimHost && (
+          <Button variant="success" className={big} onClick={actions.claimHost}>
+            🙋 Vai responder{turnTeam ? ` (${turnTeam.name})` : ""}
+          </Button>
+        )}
+        {round.status === "playing" && !gate && auction && (
           auction.phase === "bidding" ? (
             <p className={`font-display text-white/70 ${tv ? "text-2xl" : "text-lg text-center w-full"}`}>🔨 Leilão em andamento nos celulares…</p>
           ) : (
@@ -115,7 +176,7 @@ export function GameControls({ g, state, size = "phone" }: { g: GameActions; sta
             </Button>
           )
         )}
-        {round.status === "playing" && choice && (
+        {round.status === "playing" && !gate && choice && (
           <Button variant="secondary" className={big} disabled={!can.reveal} onClick={actions.reveal}>
             ⏹ Encerrar respostas
           </Button>

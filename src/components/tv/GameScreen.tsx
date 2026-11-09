@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GameControls, OverrideButtons, useGameActions } from "@/components/control/GameControls";
 import { EmojiRain } from "@/components/EmojiRain";
+import { RoundIntro, TurnHandoff, vezDo } from "@/components/RoundIntro";
 import { Button, Equalizer, Spinner, TeamChip } from "@/components/ui";
 import { useNow } from "@/hooks/useNow";
 import { api, deezer } from "@/lib/api";
@@ -19,6 +20,8 @@ import {
   lockLabel,
   artistCredits,
   missingParts,
+  quizMuted,
+  quizWaiting,
   ranking,
   recentDecision,
   roundAttempts,
@@ -28,14 +31,16 @@ import {
   tiebreakDecider,
   tiebreakLeft,
   tiebreakOf,
+  turnClaims,
   turnOf,
+  turnWaiting,
 } from "@/lib/game";
 import { sharedSfx } from "@/lib/sfx";
 import type { Attempt, RoomState, Round, TiebreakState } from "@/lib/types";
 import { getMode } from "@/modes";
 import { auctionOf, isAuction, lastAction } from "@/modes/auction/logic";
 import { ContinueRevealLine, ContinueStack, SingAlong } from "@/modes/continue/ContinueView";
-import { CONT_STOP_BEFORE, contOf, singUntil } from "@/modes/continue/logic";
+import { CONT_STOP_BEFORE, contCanAnswer, contOf, singUntil } from "@/modes/continue/logic";
 import { LyricsReveal, LyricsStack, lyricsOf } from "@/modes/lyrics/LyricsView";
 import { OBRA_KIND, obraOf } from "@/modes/obra/logic";
 import { STEM_EMOJI, STEM_LABEL, stemsOf, vocalsOnly } from "@/modes/stems/logic";
@@ -48,10 +53,6 @@ import { playerLabel, teamLabel } from "@/lib/icons";
 
 /** A música da revelação espera o efeito sonoro terminar. */
 const REVEAL_MUSIC_DELAY_MS = 1200;
-/** Quanto tempo o anúncio "MORTE SÚBITA!" fica na tela. */
-const SUDDEN_ANNOUNCE_MS = 4500;
-/** Anúncio do modo da rodada (só com 2+ modos ligados). */
-const MODE_ANNOUNCE_MS = 2600;
 
 export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const round = currentRound(state);
@@ -132,7 +133,9 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
   const lastBuzz = useRef<string | null>(null);
   // (no leilão a vez abre junto com o "Tocar": nada de parar o som)
   const openAttemptId = attempt?.status === "open" && !isAuction(round) ? attempt.id : null;
-  const turnMode = !!turnOf(round);
+  // um time por vez (letra / continuar / quiz): a vez abre e a música continua;
+  // Clássico / Obra / Instrumentos: "Responder agora" para a música como o EU SEI!
+  const turnMode = !!turnOf(round) && !turnClaims(round);
   useEffect(() => {
     if (!openAttemptId || lastBuzz.current === openAttemptId) return;
     lastBuzz.current = openAttemptId;
@@ -228,26 +231,25 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     };
   }, [turnDeadline, paused, serverNow, sfx, code]);
 
-  // ---- morte súbita: anúncio com efeito sonoro (uma vez por música de desempate) ----
+  // ---- apresentação da rodada (espera o "Começar rodada"): efeito sonoro uma vez ----
   const tb = tiebreakOf(round);
   const announced = useRef<string | null>(null);
-  const tbFresh = !!tb && !!round && now - Date.parse(round.created_at) < SUDDEN_ANNOUNCE_MS;
+  const intro = status === "intro";
   useEffect(() => {
-    if (!tbFresh || !roundId || announced.current === roundId) return;
+    if (!intro || !roundId || announced.current === roundId) return;
     announced.current = roundId;
     audio.stopAll();
-    sfx.play("sudden");
-  }, [tbFresh, roundId, audio, sfx]);
+    sfx.play(tb ? "sudden" : "mode");
+  }, [intro, roundId, tb, audio, sfx]);
 
-  // ---- vários modos ligados: anuncia o modo de cada rodada ("LEILÃO!") ----
-  const multiMode = enabledModes(state.room.settings).length > 1;
-  const modeFresh = multiMode && !tb && !!round && now - Date.parse(round.created_at) < MODE_ANNOUNCE_MS;
-  const announcedMode = useRef<string | null>(null);
+  // ---- "Vez do time X!" (a vez passou): efeito sonoro uma vez por passagem ----
+  const handoffKey = turnWaiting(round) ? `${roundId}:${turnOf(round)?.team}:${round?.stage}` : null;
+  const seenHandoff = useRef<string | null>(null);
   useEffect(() => {
-    if (!modeFresh || !roundId || announcedMode.current === roundId) return;
-    announcedMode.current = roundId;
+    if (!handoffKey || seenHandoff.current === handoffKey) return;
+    seenHandoff.current = handoffKey;
     sfx.play("mode");
-  }, [modeFresh, roundId, sfx]);
+  }, [handoffKey, sfx]);
 
   // ---- revelação: efeito sonoro e depois a música (pausa para e continua de onde parou) ----
   const reveal = useRef<{ roundId: string; pos: number; done: boolean; announced: boolean } | null>(null);
@@ -270,6 +272,11 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       // alternativas: o som de acerto/erro já tocou
       if (!winner && currentRound(state)?.mode !== "quiz_choice") sfx.play("reveal");
       delay = sfx.enabled ? Math.max(REVEAL_MUSIC_DELAY_MS, sfx.length(winner ? "correct" : "reveal") * 1000) : 0;
+    }
+    // curiosidade sem música relacionada: a revelação fica em silêncio
+    if (quizMuted(currentRound(state))) {
+      r.done = true;
+      return;
     }
     let handle: PlayHandle | null = null;
     const line = contOf(currentRound(state))?.reveal;
@@ -302,7 +309,8 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
     if (paused) audio.stopAll();
   }, [paused, audio]);
 
-  // atalhos de teclado ("Todos jogam"): espaço = Tocar, R = Repetir, → = Próximo trecho, P = Pausar
+  // atalhos de teclado ("Todos jogam"): Enter = Começar rodada / Valendo! / Continuar,
+  // espaço = Tocar, R = Repetir, → = Próximo trecho, P = Pausar
   const a = g.actions;
   const onKey = useCallback(
     (e: KeyboardEvent) => {
@@ -310,7 +318,10 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
       const k = e.key.toLowerCase();
-      if (k === " " || k === "r") {
+      if (k === "enter") {
+        e.preventDefault();
+        a.primary();
+      } else if (k === " " || k === "r") {
         e.preventDefault();
         a.play();
       } else if (k === "arrowright") {
@@ -342,7 +353,9 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
 
       <div className="flex flex-1 flex-col items-center justify-center">
         {round.status === "loading" && <Spinner label={loadMsg ?? "Preparando a música…"} />}
-        {(round.status === "playing" || round.status === "answering" || round.status === "doubt") && (
+        {round.status === "intro" && <RoundIntro state={state} round={round} />}
+        {turnWaiting(round) && <TurnHandoff state={state} round={round} />}
+        {(round.status === "playing" || round.status === "answering" || round.status === "doubt") && !turnWaiting(round) && (
           <RoundScreen state={state} round={round} attempt={attempt} now={now} clipPlaying={clipPlaying} />
         )}
         {round.status === "revealed" && (
@@ -371,8 +384,6 @@ export function GameScreen({ state, ctx }: { state: RoomState; ctx: TvCtx }) {
         <EmojiRain key={flash.id} emojis={[teamById(state, flash.team_id)?.icon ?? "🎉", "🎉", "✨", teamById(state, flash.team_id)?.icon ?? "🎵"]} />
       )}
 
-      {tb && tbFresh && <SuddenDeathAnnounce state={state} tb={tb} />}
-      {modeFresh && <ModeAnnounce mode={round.mode} />}
 
       {paused && (
         <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/60">
@@ -561,9 +572,7 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
               {round.played_stage === 0 ? (quizOf(round) ? "🎧 A música vai tocar ao fundo…" : "🎧 Prontos? A música vai começar…") : obraOf(round) ? "⏸ Música parou" : "⏸ Trecho terminou"}
             </p>
           )}
-          <p className="font-display text-4xl text-white">
-            {contOf(round) ? "Sabe a próxima linha?" : quizOf(round) ? "Sabe a resposta?" : obraOf(round) ? "Sabe qual é a obra?" : "Sabe qual é?"} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
-          </p>
+          <PlayHint state={state} round={round} now={now} clipPlaying={clipPlaying} />
         </div>
       )}
       {round.status === "answering" && attempt && <TurnPanel state={state} round={round} attempt={attempt} now={now} clipPlaying={clipPlaying} />}
@@ -574,6 +583,41 @@ function RoundView({ state, round, attempt, now, clipPlaying }: TvRoundViewProps
         </div>
       )}
     </div>
+  );
+}
+
+/** O que fazer agora: EU SEI!, "Responder agora" (um time por vez), esperar a música parar ou o "Valendo!". */
+function PlayHint({ state, round, now, clipPlaying }: { state: RoomState; round: Round; now: number; clipPlaying: boolean }) {
+  const ask = contOf(round) ? "Sabe a próxima linha?" : quizOf(round) ? "Sabe a resposta?" : obraOf(round) ? "Sabe qual é a obra?" : "Sabe qual é?";
+  if (quizWaiting(round)) {
+    return <p className="font-display text-4xl text-white">📖 Leiam a pergunta… o tempo começa no <b className="text-yellow-300">Valendo!</b></p>;
+  }
+  if (turnClaims(round)) {
+    const team = teamById(state, turnOf(round)?.team);
+    return (
+      <div className="flex flex-col items-center gap-3">
+        {team && (
+          <TeamChip team={team} className="text-4xl px-8 py-2">
+            {vezDo(team.name)} {team.name}{(turnOf(round)?.factor ?? 1) < 1 ? " · metade dos pontos" : ""}
+          </TeamChip>
+        )}
+        <p className="font-display text-4xl text-white">
+          {round.played_stage === 0 ? "Toquem o 1º trecho!" : <>Sabem? Apertem <b className="text-yellow-300">Responder agora</b> no celular</>}
+        </p>
+      </div>
+    );
+  }
+  if (contOf(round) && !contCanAnswer(round, now)) {
+    return (
+      <p className="font-display text-4xl text-white/80">
+        {round.played_stage === 0 || clipPlaying ? "🎧 Escutem… o EU SEI! libera quando a música parar" : "⏳ Espere a música parar…"}
+      </p>
+    );
+  }
+  return (
+    <p className="font-display text-4xl text-white">
+      {ask} Aperte <b className="text-yellow-300">EU SEI!</b> no celular
+    </p>
   );
 }
 
@@ -588,7 +632,7 @@ function TurnPanel({ state, round, attempt, now, clipPlaying }: { state: RoomSta
   return (
     <div key={attempt.id} className="npl-pop flex w-full max-w-4xl flex-col items-center gap-4 rounded-[2.5rem] p-8 text-center" style={{ background: team.color, color: textOn(team.color) }}>
       {turn ? (
-        <p className="font-display text-4xl font-bold">{attempt.steal ? "Passou a vez! " : ""}Vez do time</p>
+        <p className="font-display text-4xl font-bold">{turnClaims(round) ? "Vai responder!" : `${attempt.steal ? "Passou a vez! " : ""}Vez do time`}</p>
       ) : (
         <p className="font-display text-3xl opacity-80">{player ? playerLabel(player) : "Alguém"} apertou!</p>
       )}
@@ -596,8 +640,10 @@ function TurnPanel({ state, round, attempt, now, clipPlaying }: { state: RoomSta
       {turn && attempt.steal && <p className="font-display text-2xl">valendo metade dos pontos</p>}
       {turn && clipPlaying && <Equalizer className="h-12 [&>span]:w-3" />}
       <p className="font-display text-3xl">{spoken ? "Respondendo…" : "digitando a resposta…"}</p>
-      {turn && !attempt.deadline && (state.room.settings.answerSeconds ?? 20) > 0 ? (
-        <p className="font-display text-3xl opacity-80">o tempo começa quando o trecho tocar</p>
+      {turn && contOf(round) && !contCanAnswer(round, now) ? (
+        <p className="font-display text-3xl opacity-80">🎧 o tempo começa quando a música parar</p>
+      ) : turn && !attempt.deadline && (state.room.settings.answerSeconds ?? 20) > 0 ? (
+        <p className="font-display text-3xl opacity-80">{quizWaiting(round) ? "o tempo começa no Valendo!" : "o tempo começa quando o trecho tocar"}</p>
       ) : left !== null ? (
         <p className={`font-display text-9xl font-bold tabular-nums ${left <= 5000 ? "animate-pulse" : ""}`}>{Math.ceil(left / 1000)}</p>
       ) : (
@@ -717,7 +763,7 @@ function RevealCard({ state, round, ctx, contest }: { state: RoomState; round: R
               <img src={r.cover} alt="" className="h-16 w-16 rounded-xl" />
             )}
             <span className="font-display text-2xl">
-              🎵 {r.title} <span className="text-pink-300">— {artistCredits(r)}</span>
+              🎵 Tocando: <span className="text-pink-300">{artistCredits(r)}</span> — {r.title}
             </span>
           </div>
         )}
@@ -882,27 +928,6 @@ function ScoreboardView({ state, round }: { state: RoomState; round: Round }) {
   );
 }
 
-/** Anúncio na TV quando a morte súbita começa (e a cada música extra). */
-function SuddenDeathAnnounce({ state, tb }: { state: RoomState; tb: TiebreakState }) {
-  return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black/80">
-      <p className="npl-pop font-display text-9xl font-bold text-rose-400 drop-shadow-[0_0_30px_rgba(244,63,94,0.6)]">
-        {tb.n > 1 ? "MAIS UMA!" : "MORTE SÚBITA!"}
-      </p>
-      <p className="font-display text-4xl text-white/90">
-        {tb.n > 1 ? "Ninguém acertou: outra música de desempate" : "Empate no 1º lugar"}
-      </p>
-      <div className="flex flex-wrap justify-center gap-3">
-        {tiebreakLeft(tb).map((id) => {
-          const t = teamById(state, id);
-          return t ? <TeamChip key={id} team={t} className="text-4xl px-6 py-2">{t.name}</TeamChip> : null;
-        })}
-      </div>
-      <p className="font-display text-3xl text-yellow-300">Quem acertar a música primeiro vence!</p>
-    </div>
-  );
-}
-
 /** Times no desempate: quem ainda está no páreo e quem já errou. */
 function TiebreakBoard({ state, tb }: { state: RoomState; tb: TiebreakState }) {
   return (
@@ -937,17 +962,5 @@ function TiebreakResult({ state, round, tb }: { state: RoomState; round: Round; 
       {round.skipped ? "Música pulada" : "Ninguém acertou 😅"}
       {tiebreakLeft(tb).length >= 2 && <span className="block text-2xl">Vem mais uma música de desempate!</span>}
     </p>
-  );
-}
-
-/** Tela rápida com o modo da próxima rodada ("LEILÃO!"). */
-function ModeAnnounce({ mode }: { mode: string }) {
-  const def = getMode(mode);
-  return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-violet-950/85">
-      <p className="npl-pop text-[10rem] leading-none">{def.icon}</p>
-      <p className="npl-pop font-display text-9xl font-bold uppercase text-yellow-300">{def.label}!</p>
-      <p className="font-display text-3xl text-white/80">{def.description}</p>
-    </div>
   );
 }

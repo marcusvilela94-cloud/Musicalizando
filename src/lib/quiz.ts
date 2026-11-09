@@ -4,6 +4,7 @@
 import "server-only";
 import bank from "../../data/curiosidades.json";
 import {
+  artistTopTrack,
   type DzArtist,
   type DzList,
   type DzTrack,
@@ -30,6 +31,8 @@ export type QuizRequest = {
   curiosities: boolean;
   /** curiosidades usadas recentemente na sala (evitar repetir) */
   recent: string[];
+  /** filtro de versões da sala (música de fundo das curiosidades) */
+  versionFilter?: boolean;
 };
 export type QuizResult = { quiz: QuizPlan } | null;
 
@@ -457,9 +460,12 @@ function chooseTrivia(ctx: Ctx, format: QuizFormat, used: Set<string>, profile: 
   return scored.sort((a, b) => b.score - a.score)[0]?.p ?? null;
 }
 
+/**
+ * Curiosidade. Música só se for relacionada (de um dos artistas da pergunta);
+ * sem música relacionada: play = false + hide_song = true (nada toca, nem na revelação).
+ */
 function triviaPlan(ctx: Ctx, p: Trivia, t: PickedTrack, format: QuizFormat): QuizPlan {
-  // a prévia é do artista relacionado se a música da rodada for dele; senão não identifica a música
-  const related = (p.artistas ?? []).some((a) => sameName(a, t.artist) || (t.artists ?? []).some((x) => sameName(a, x)));
+  const related = isRelated(p, t);
   const wrong = shuffle(p.erradas ?? []).slice(0, 3);
   return {
     kind: "trivia",
@@ -467,17 +473,30 @@ function triviaPlan(ctx: Ctx, p: Trivia, t: PickedTrack, format: QuizFormat): Qu
     answer: p.resposta,
     accept: p.aceitas?.length ? p.aceitas : [p.resposta],
     trivia_id: p.id,
-    hide_song: !related,
+    ...(related ? {} : { play: false, hide_song: true }),
     ...(format === "choice" ? shuffleOptions(p.resposta, wrong) : {}),
   };
 }
+
+/** A música é de um dos artistas da pergunta? */
+const isRelated = (p: Trivia, t: PickedTrack) =>
+  (p.artistas ?? []).some((a) => sameName(a, t.artist) || (t.artists ?? []).some((x) => sameName(a, x)));
 
 /**
  * Para curiosidades: troca a música da rodada por uma do artista relacionado,
  * se houver uma nas músicas sorteadas que não está em outra rodada.
  */
 function relatedTrack(p: Trivia, spares: PickedTrack[]) {
-  return spares.find((x) => (p.artistas ?? []).some((a) => sameName(a, x.artist) || (x.artists ?? []).some((y) => sameName(a, y))));
+  return spares.find((x) => isRelated(p, x));
+}
+
+/** Sem faixa do artista nas fontes: a mais popular dele no Deezer (top do artista). */
+async function relatedTop(p: Trivia, versionFilter: boolean, exclude: Set<number>) {
+  for (const name of shuffle([...(p.artistas ?? [])]).slice(0, 3)) {
+    const t = await artistTopTrack(name, versionFilter, exclude).catch(() => null);
+    if (t) return t;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------
@@ -520,9 +539,14 @@ export async function buildQuiz(req: QuizRequest): Promise<{ results: (({ quiz: 
       const p = chooseTrivia(ctx, format, usedTrivia, matchProfile(ctx, knownYears));
       if (p) {
         usedTrivia.add(p.id);
-        // a música da rodada já é do artista relacionado: fica; senão, uma dele das sobras
-        const swap = relatedTrack(p, [track]) ? undefined : relatedTrack(p, spares);
+        // música só se for relacionada: a da rodada (se for do artista), uma dele das
+        // fontes da partida ou, se não houver, a mais popular dele no Deezer
+        let swap = relatedTrack(p, [track]) ? undefined : relatedTrack(p, spares);
         if (swap) spares.splice(spares.indexOf(swap), 1);
+        else if (!relatedTrack(p, [track]) && (p.artistas ?? []).length) {
+          swap = (await relatedTop(p, ctx.req.versionFilter !== false, inMatch)) ?? undefined;
+          if (swap) inMatch.add(swap.deezer_id);
+        }
         const t = swap ?? track;
         results[i] = { quiz: { ...triviaPlan(ctx, p, t, format), open: format === "open" }, ...(swap ? { track: swap } : {}) };
         counts.set("trivia", (counts.get("trivia") ?? 0) + 1);

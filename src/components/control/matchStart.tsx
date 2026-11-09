@@ -302,6 +302,7 @@ async function prepareMatch(
         pool: all.map(slim),
         sources: s.sources,
         curiosities: s.curiosities !== false,
+        versionFilter: s.versionFilter !== false,
         recent: state.room.trivia_recent ?? [],
       })
       .catch(() => ({ results: [] as Awaited<ReturnType<typeof deezer.quiz>>["results"] }));
@@ -317,7 +318,9 @@ async function prepareMatch(
       // curiosidade de um artista das fontes: toca uma música dele
       const swap = r.track && !inUse.has(r.track.deezer_id) ? all.find((x) => x.deezer_id === r.track!.deezer_id) ?? r.track : null;
       if (swap) inUse.add(swap.deezer_id);
-      ordered[pos] = { ...(swap ?? ordered[pos]), lyrics: undefined, cont: undefined, mode: ordered[pos].mode, quiz: r.quiz };
+      // a música do artista já está em outra rodada: esta curiosidade fica sem música
+      const quiz = r.track && !swap && r.quiz.kind === "trivia" ? { ...r.quiz, play: false, hide_song: true } : r.quiz;
+      ordered[pos] = { ...(swap ?? ordered[pos]), lyrics: undefined, cont: undefined, mode: ordered[pos].mode, quiz };
     });
   }
   // faltou música e é "Um time por vez": rodadas desses modos num múltiplo do número de times

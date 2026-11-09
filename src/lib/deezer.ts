@@ -356,6 +356,26 @@ function toPicked(t: DzTrack, source?: SourceRef): PickedTrack {
   };
 }
 
+/**
+ * Curiosidades: a música mais popular do artista (top do Deezer), com prévia,
+ * respeitando o filtro de versões (sem ao vivo, remix, coletâneas…).
+ * null = artista não encontrado ou nenhuma faixa serve.
+ */
+export async function artistTopTrack(name: string, versionFilter: boolean, exclude: Set<number> = new Set()): Promise<PickedTrack | null> {
+  const r = await dz<DzList<DzArtist>>(`/search/artist?q=${encodeURIComponent(name)}&limit=8`);
+  const want = fold(name);
+  // nome igual (o mais seguido); a busca às vezes põe homônimos pequenos na frente
+  const artist = (r.data ?? []).filter((a) => fold(a.name) === want).sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0];
+  if (!artist) return null;
+  const top = await dz<DzList<DzTrack>>(`/artist/${artist.id}/top?limit=15`);
+  for (const t of top.data ?? []) {
+    if (!t.preview || t.readable === false || exclude.has(t.id)) continue;
+    if (versionFilter && (isOtherVersion(t) || isCompilationAlbum(await getAlbum(t.album?.id)))) continue;
+    return toPicked(t);
+  }
+  return null;
+}
+
 /** Dados guardados de cada música do cache (npl_stems_cache.meta). */
 type CachedMeta = {
   title: string;
